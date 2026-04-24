@@ -1,23 +1,32 @@
 ## Sample-Konfig für den WMS Connect Converter.
 ## Kopiere nach `config/config.toml` und passe Server, Credentials und
-## Queue-Namen an.
+## Stream/Consumer-Namen an.
 ##
 ## Geheimnisse besser via Env überschreiben — alles unter `[…]` ist
 ## per `WMS_CONNECT__SECTION__KEY` gesetzlich. Beispiele:
-##   WMS_CONNECT__AMQP__URL=amqp://user:pass@host:5672/%2F
+##   WMS_CONNECT__NATS__URL=nats://192.168.4.128:4222
+##   WMS_CONNECT__NATS__USERNAME=svc-wms-connect-dev
+##   WMS_CONNECT__NATS__PASSWORD=...
 ##   WMS_CONNECT__SMB__PASSWORD=...
-##   WMS_CONNECT__SMB__USERNAME=...
 
 [logging]
 dir   = "logs"
 level = "info"
 
-[amqp]
-url                  = "amqp://svc-wms-connect-dev:CHANGEME@localhost:5672/%2F"
-inbound_queue_asn    = "wms-connect.inbound.asn.dev"
-inbound_queue_art    = "wms-connect.inbound.art.dev"
-inbound_queue_order  = "wms-connect.inbound.order.dev"
-prefetch             = 10
+# NATS JetStream. Stream + Consumer müssen vorher per
+# `declare_topology.py --apply` aus dem Plattform-Repo provisioniert
+# sein — der Service deklariert nichts selbst. Drei separate Pull-
+# Consumer (einer pro Event-Typ), damit Lag-Metriken pro Event sauber
+# trennbar sind.
+[nats]
+url           = "nats://192.168.4.128:4222"
+username      = "svc-wms-connect-dev"
+password      = "CHANGEME"
+stream        = "hag-events-dev"
+durable_asn   = "wms-connect-inbound-asn-dev"
+durable_art   = "wms-connect-inbound-art-dev"
+durable_order = "wms-connect-inbound-order-dev"
+prefetch      = 10
 
 ## Einheitliches Dateinamen-Schema für alle Mandanten und alle drei
 ## Event-Typen. Platzhalter:

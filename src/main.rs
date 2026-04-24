@@ -11,7 +11,7 @@ mod logging;
 mod sink;
 mod writer;
 
-use bus::rabbitmq::AmqpBus;
+use bus::nats::NatsBus;
 use bus::Consumer;
 use config::Config;
 use error::AppResult;
@@ -73,8 +73,15 @@ async fn main() -> AppResult<()> {
     let sink: Arc<dyn OutputSink> = build_sink(&cfg)?;
     let seq = Arc::new(SeqCounter::new());
 
-    // Bus-Verbindung (lapin / RabbitMQ).
-    let bus: Arc<dyn Consumer> = Arc::new(AmqpBus::connect_with_retry(&cfg.amqp.url).await?);
+    // Bus-Verbindung (NATS JetStream).
+    let bus: Arc<dyn Consumer> = Arc::new(
+        NatsBus::connect_with_retry(
+            &cfg.nats.url,
+            cfg.nats.username.as_deref(),
+            cfg.nats.password.as_deref(),
+        )
+        .await?,
+    );
 
     let tpl_asn: Arc<str> = Arc::from(cfg.filenames.asn.as_str());
     let tpl_art: Arc<str> = Arc::from(cfg.filenames.art.as_str());
@@ -83,34 +90,29 @@ async fn main() -> AppResult<()> {
     let h_art = handlers::art::make_handler(sink.clone(), seq.clone(), tpl_art);
     let h_order = handlers::order::make_handler(sink.clone(), seq.clone(), tpl_order);
 
-    let prefetch = cfg.amqp.prefetch;
+    let prefetch = cfg.nats.prefetch;
+    let stream = Arc::new(cfg.nats.stream.clone());
     let b_asn = bus.clone();
-    let q_asn = cfg.amqp.inbound_queue_asn.clone();
+    let s_asn = stream.clone();
+    let d_asn = cfg.nats.durable_asn.clone();
     tokio::spawn(async move {
-        if let Err(e) = b_asn
-            .consume(&q_asn, "wms-connect.asn", prefetch, h_asn)
-            .await
-        {
+        if let Err(e) = b_asn.consume(&s_asn, &d_asn, prefetch, h_asn).await {
             tracing::error!(error = ?e, "asn-consumer beendet");
         }
     });
     let b_art = bus.clone();
-    let q_art = cfg.amqp.inbound_queue_art.clone();
+    let s_art = stream.clone();
+    let d_art = cfg.nats.durable_art.clone();
     tokio::spawn(async move {
-        if let Err(e) = b_art
-            .consume(&q_art, "wms-connect.art", prefetch, h_art)
-            .await
-        {
+        if let Err(e) = b_art.consume(&s_art, &d_art, prefetch, h_art).await {
             tracing::error!(error = ?e, "art-consumer beendet");
         }
     });
     let b_order = bus;
-    let q_order = cfg.amqp.inbound_queue_order.clone();
+    let s_order = stream;
+    let d_order = cfg.nats.durable_order.clone();
     tokio::spawn(async move {
-        if let Err(e) = b_order
-            .consume(&q_order, "wms-connect.order", prefetch, h_order)
-            .await
-        {
+        if let Err(e) = b_order.consume(&s_order, &d_order, prefetch, h_order).await {
             tracing::error!(error = ?e, "order-consumer beendet");
         }
     });

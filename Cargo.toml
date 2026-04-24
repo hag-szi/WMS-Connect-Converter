@@ -3,7 +3,7 @@ name = "wms-connect-converter"
 version = "0.1.0"
 edition = "2021"
 authors = ["IT Hartmann <it@hartmannag.de>"]
-description = "Bus-Consumer, der wms.{asn,art,order}-ready-Events in Lobster-kompatible .dat-Dateien überführt."
+description = "NATS-JetStream-Consumer, der hag.events.internal.lager.{asn,article,order}.ready-Events in Lobster-kompatible .dat-Dateien überführt."
 
 [[bin]]
 name = "wms-connect-converter"
@@ -13,12 +13,12 @@ path = "src/main.rs"
 # Async runtime
 tokio = { version = "1", features = ["full"] }
 
-# AMQP (RabbitMQ) — hinter einem dünnen Bus-Trait, damit ein späterer
-# Wechsel (Kafka/Redpanda/…) nur einen Adapter tauscht.
-lapin = "2.5"
-tokio-executor-trait = "2"
-tokio-reactor-trait = "1"
-futures-lite = "2"
+# NATS (JetStream-Pull-Consumer) — hinter einem dünnen Bus-Trait,
+# damit ein späterer Wechsel (Kafka/Redpanda/…) nur einen Adapter
+# tauscht.
+async-nats = "0.42"
+bytes = "1"
+futures = "0.3"
 async-trait = "0.1"
 
 # Serde + JSON (Event-Payloads spiegeln die Pydantic-Contracts)

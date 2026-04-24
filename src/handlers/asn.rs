@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::bus::{AckOutcome, HandlerArc};
-use crate::envelope::{Envelope, WmsAsnReadyData};
+use crate::envelope::{Envelope, InternalLagerAsnReadyData};
 use crate::error::AppResult;
 use crate::handlers::{render_filename, FilenameContext, SeqCounter};
 use crate::sink::OutputSink;
@@ -26,8 +26,11 @@ async fn handle(
     template: &str,
     body: &[u8],
 ) -> AppResult<AckOutcome> {
-    let env: Envelope<WmsAsnReadyData> = serde_json::from_slice(body)
-        .map_err(|e| crate::error::AppError::BadPayload(format!("wms.asn-ready parse: {e}")))?;
+    let env: Envelope<InternalLagerAsnReadyData> = serde_json::from_slice(body).map_err(|e| {
+        crate::error::AppError::BadPayload(format!(
+            "hag.events.internal.lager.asn.ready parse: {e}"
+        ))
+    })?;
     let content = asn::render(&env.data);
     let ctx = FilenameContext {
         mandant: &env.data.mandant,

@@ -1,6 +1,11 @@
 //! Event-Envelope + Payload-Structs. Spiegel der Pydantic-Modelle aus
 //! `hag-connect-platform/contracts/schemas/events/*.yaml`
-//! (Version 0.7.0).
+//! (v2-Taxonomy, contracts v1.0.1).
+//!
+//! Subjects:
+//!   - `hag.events.internal.lager.asn.ready`     → InternalLagerAsnReadyData
+//!   - `hag.events.internal.lager.article.ready` → InternalLagerArticleReadyData
+//!   - `hag.events.internal.lager.order.ready`   → InternalLagerOrderReadyData
 //!
 //! Alle `.dat`-Row-Werte sind als Vec<String> (positional) abgelegt;
 //! die Schemas geben feste Längen vor, wir validieren das beim
@@ -28,17 +33,17 @@ pub struct Envelope<T> {
     pub raw_payload: Option<serde_json::Value>,
 }
 
-// --- wms.asn-ready ---------------------------------------------------------
+// --- hag.events.internal.lager.asn.ready ----------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WmsAsnReadyData {
+pub struct InternalLagerAsnReadyData {
     pub mandant: String,
     pub reference: String,
-    pub rows: Vec<WmsAsnRow>,
+    pub rows: Vec<InternalLagerAsnRow>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WmsAsnRow {
+pub struct InternalLagerAsnRow {
     pub sscc: String,
     pub we_nummer: String,
     pub bestell_ref: String,
@@ -53,27 +58,28 @@ pub struct WmsAsnRow {
     pub paletten_typ: String,
 }
 
-// --- wms.art-ready ---------------------------------------------------------
+// --- hag.events.internal.lager.article.ready ------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WmsArtReadyData {
+pub struct InternalLagerArticleReadyData {
     pub mandant: String,
     #[serde(default)]
     pub trigger_artikelnr: Option<String>,
-    /// Jede Row = 41 positionale Strings.
+    /// Jede Row = 47 positionale Strings (für Schenk meist mit 6
+    /// leeren Trailing-Feldern; ALDI füllt sie).
     pub rows: Vec<Vec<String>>,
 }
 
-// --- wms.order-ready -------------------------------------------------------
+// --- hag.events.internal.lager.order.ready --------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WmsOrderReadyData {
+pub struct InternalLagerOrderReadyData {
     pub mandant: String,
-    pub orders: Vec<WmsOrderItem>,
+    pub orders: Vec<InternalLagerOrderItem>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WmsOrderItem {
+pub struct InternalLagerOrderItem {
     /// 16 Felder.
     pub hl40: Vec<String>,
     /// 15 Felder.
@@ -93,8 +99,8 @@ mod tests {
     #[test]
     fn asn_round_trip() {
         let json = serde_json::json!({
-            "event_id": "1", "event_name": "wms.asn-ready",
-            "event_version": "0.1.0",
+            "event_id": "1", "event_name": "hag.events.internal.lager.asn.ready",
+            "event_version": "1.0.1",
             "occurred_at": "2026-04-24T10:00:00Z",
             "producer": "schenk-we", "customer_key": "SCHENK",
             "data": {
@@ -111,7 +117,7 @@ mod tests {
                 }]
             }
         });
-        let env: Envelope<WmsAsnReadyData> = serde_json::from_value(json).unwrap();
+        let env: Envelope<InternalLagerAsnReadyData> = serde_json::from_value(json).unwrap();
         assert_eq!(env.data.rows.len(), 1);
     }
 
@@ -122,8 +128,8 @@ mod tests {
         row[1] = "1".into();
         row[2] = "07418".into();
         let json = serde_json::json!({
-            "event_id": "1", "event_name": "wms.art-ready",
-            "event_version": "0.1.0",
+            "event_id": "1", "event_name": "hag.events.internal.lager.article.ready",
+            "event_version": "1.0.1",
             "occurred_at": "2026-04-24T10:00:00Z",
             "producer": "schenk-pull", "customer_key": "SCHENK",
             "data": {
@@ -132,7 +138,7 @@ mod tests {
                 "rows": [row]
             }
         });
-        let env: Envelope<WmsArtReadyData> = serde_json::from_value(json).unwrap();
+        let env: Envelope<InternalLagerArticleReadyData> = serde_json::from_value(json).unwrap();
         assert_eq!(env.data.rows[0].len(), 47);
     }
 
@@ -142,8 +148,8 @@ mod tests {
         let hl41: Vec<String> = (0..15).map(|i| format!("{i}")).collect();
         let hl42: Vec<String> = (0..24).map(|i| format!("{i}")).collect();
         let json = serde_json::json!({
-            "event_id": "1", "event_name": "wms.order-ready",
-            "event_version": "0.1.0",
+            "event_id": "1", "event_name": "hag.events.internal.lager.order.ready",
+            "event_version": "1.0.1",
             "occurred_at": "2026-04-24T10:00:00Z",
             "producer": "order-publisher", "customer_key": "SCHENK",
             "data": {
@@ -154,7 +160,7 @@ mod tests {
                 }]
             }
         });
-        let env: Envelope<WmsOrderReadyData> = serde_json::from_value(json).unwrap();
+        let env: Envelope<InternalLagerOrderReadyData> = serde_json::from_value(json).unwrap();
         assert_eq!(env.data.orders[0].positionen[0].len(), 24);
     }
 }

@@ -8,7 +8,7 @@ use crate::error::{AppError, AppResult};
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     pub logging: LoggingConfig,
-    pub amqp: AmqpConfig,
+    pub nats: NatsConfig,
     /// Dateinamen-Templates pro Event-Typ — einheitlich für alle
     /// Mandanten.
     pub filenames: FilenamesConfig,
@@ -32,11 +32,26 @@ pub struct LoggingConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct AmqpConfig {
+pub struct NatsConfig {
+    /// NATS-Server-URL, z.B. `nats://192.168.4.128:4222`. Credentials
+    /// kommen besser per `WMS_CONNECT__NATS__USERNAME` /
+    /// `WMS_CONNECT__NATS__PASSWORD` aus dem Env.
     pub url: String,
-    pub inbound_queue_asn: String,
-    pub inbound_queue_art: String,
-    pub inbound_queue_order: String,
+    #[serde(default)]
+    pub username: Option<String>,
+    #[serde(default)]
+    pub password: Option<String>,
+    /// Stream-Name, in dem die Pull-Consumer hängen. Wird vom
+    /// Plattform-`declare_topology.py` provisioniert. Default
+    /// `hag-events-dev` o.ä. — siehe config.sample.toml.
+    pub stream: String,
+    /// Durable Pull-Consumer-Namen pro Event-Typ. Müssen vorher per
+    /// `declare_topology.py --apply` existieren (mit dem passenden
+    /// `filter_subject`).
+    pub durable_asn: String,
+    pub durable_art: String,
+    pub durable_order: String,
+    /// Pull-Batch-Größe pro Consumer.
     #[serde(default = "default_prefetch")]
     pub prefetch: u16,
 }

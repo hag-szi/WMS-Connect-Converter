@@ -7,11 +7,11 @@ in WMS-kompatible `.dat`-Dateien überführt. Ziel ist die Konvertierung fertige
 
 ## Was der Converter tut
 
-| Inbound-Event       | Was wird geschrieben                                                           |
-| ------------------- | ------------------------------------------------------------------------------ |
-| `wms.asn-ready`   | 25-Feld-ASN `.dat` (ein Pallet pro Zeile)                                    |
-| `wms.art-ready`   | 47-Feld-ART `.dat` (ein Artikel pro Zeile)                                   |
-| `wms.order-ready` | HL40/HL41/HL42(×N)/HL43-ORDER `.dat` (ein oder mehrere Aufträge pro Datei) |
+| Inbound-Event                                | Was wird geschrieben                                                           |
+| -------------------------------------------- | ------------------------------------------------------------------------------ |
+| `hag.events.internal.lager.asn.ready`        | 25-Feld-ASN `.dat` (ein Pallet pro Zeile)                                    |
+| `hag.events.internal.lager.article.ready`    | 47-Feld-ART `.dat` (ein Artikel pro Zeile)                                   |
+| `hag.events.internal.lager.order.ready`      | HL40/HL41/HL42(×N)/HL43-ORDER `.dat` (ein oder mehrere Aufträge pro Datei) |
 
 Alle Dateien: pipe-delimited (`|`), CRLF zwischen den Zeilen, **kein**
 trailing CRLF am Ende. Encoding ist einheitlich **UTF-8** für alle
@@ -27,20 +27,22 @@ Mandanten. Der Dateiname folgt ebenfalls einem einheitlichen Muster
 ```
                     ┌──────────────────────────┐
                     │  HAG Connect Bus         │
-                    │   (RabbitMQ heute,       │
-                    │    austauschbar)         │
+                    │   (NATS JetStream,       │
+                    │    hag-events stream)    │
                     └─────┬───────┬───────┬────┘
                           │       │       │
-                 wms.asn- │   wms.│   wms.order-ready
-                  ready   │   art-│       │
-                          │  ready│       │
+            internal.lager│ .asn  │.article│ .order .ready
+                          ▼       ▼       ▼
+                    drei durable Pull-Consumer
+                    (wms-connect-inbound-{asn,article,order})
+                          │       │       │
                           ▼       ▼       ▼
                     ┌──────────────────────────┐
                     │ wms-connect-converter    │
                     │                          │
                     │  ┌────────────────────┐  │
                     │  │ bus::Consumer      │  │
-                    │  │   └ lapin adapter  │  │
+                    │  │   └ nats adapter   │  │
                     │  └────────────────────┘  │
                     │  ┌────────────────────┐  │
                     │  │ envelope (serde)   │  │
@@ -68,9 +70,10 @@ Mandanten. Der Dateiname folgt ebenfalls einem einheitlichen Muster
 
 `src/bus/mod.rs` definiert das `Consumer`-Trait mit einem
 Handler-Callback (`Vec<u8>` → `AckOutcome`). Der aktuelle Adapter
-ist `src/bus/rabbitmq.rs` (lapin). Bei Bus-Wechsel wird nur ein
-neuer Adapter (Kafka, Redpanda, …) geschrieben — die Business-
-Logik in `src/handlers/` kennt nur das Trait.
+ist `src/bus/nats.rs` (async-nats, JetStream-Pull-Consumer). Bei
+Bus-Wechsel wird nur ein neuer Adapter (Kafka, Redpanda, …)
+geschrieben — die Business-Logik in `src/handlers/` kennt nur das
+Trait.
 
 ### Pro-Event-Pfad
 
@@ -85,9 +88,10 @@ Logik in `src/handlers/` kennt nur das Trait.
 4. **Ack** zurück an den Bus.
 
 Fehler (Parse-Fehler, falsche Feldzahl im Payload, Sink-IO-Fehler)
-werden zu `AckOutcome::RejectToDlx` und die Message landet in der
-Dead-Letter-Queue — **nicht** Requeue, damit defekte Payloads
-nicht endlos rezirkulieren.
+werden zu `AckOutcome::RejectToDlx` — der NATS-Adapter ackt
+`AckKind::Term`, JetStream zählt die Message nicht gegen
+`max_deliver` und der DLQ-Router (`SUBJECT_SCHEMA.md §6`) leitet
+sie auf `hag.dlq.>` um.
 
 ## SMB-Sink — Produktion
 
@@ -137,9 +141,9 @@ ein lokales Verzeichnis nutzen (siehe unten).
 ## Tech-Stack
 
 - Rust 1.95.0 (pinned via `rust-toolchain.toml`)
-- `tokio` (full), `lapin` 2.5, `tokio-{executor,reactor}-trait`
+- `tokio` (full), `async-nats` 0.42 (JetStream Pull-Consumer)
 - `serde` + `serde_json` (Event-Payloads spiegeln die Pydantic-
-  Contracts aus hag-connect-platform 0.7.0)
+  Contracts aus hag-connect-platform 1.0.1)
 - `figment` (TOML + Env-Variablen)
 - `tracing` + `tracing-subscriber` (JSON-Log, täglich rollend)
 
@@ -147,13 +151,14 @@ ein lokales Verzeichnis nutzen (siehe unten).
 
 ### Voraussetzungen
 
-- Zugang zur RabbitMQ-Instanz der HAG-Connect-Plattform.
-  Service-User `svc-wms-connect` + Passwort kommen aus
+- Zugang zum NATS-Server der HAG-Connect-Plattform
+  (dev: `nats://192.168.4.128:4222`); Service-User
+  `svc-wms-connect-<env>` + Passwort kommen aus
   [`declare_users.py`](https://gitlab.hartmannag.de/it-hartmann/hag-connect-platform).
-- Topologie (Exchange `hag.events`, Queues
-  `wms-connect.inbound.{asn,art,order}`, Bindings) muss
-  **vorher** per `declare_topology.py` provisioniert sein — der
-  Converter deklariert nichts selbst.
+- Stream `hag-events-<env>` + drei durable Pull-Consumer
+  (`wms-connect-inbound-{asn,article,order}-<env>`) müssen
+  **vorher** per `declare_topology.py --apply` provisioniert sein —
+  der Converter deklariert nichts selbst.
 - Rust-Toolchain 1.95.0 (holt `rust-toolchain.toml` automatisch).
 
 ### Konfiguration
@@ -243,21 +248,22 @@ Die Tests decken ab:
 ### Start-Sequenz
 
 1. Config laden + Logging aufsetzen.
-2. AMQP-Verbindung mit Retry (10 Versuche × 3 s Pause).
-3. Drei Consumer-Tasks spawnen, je ein Handler pro Queue.
+2. NATS-Verbindung mit Retry (10 Versuche × 3 s Pause).
+3. Drei Consumer-Tasks spawnen, je ein Handler pro durable
+   Pull-Consumer.
 4. Warten auf `SIGINT`.
 
 ### Fehlerpfade
 
-| Situation                                           | Outcome                                                                      |
-| --------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Parse-Fehler (JSON kaputt, Pflichtfeld fehlt)       | Reject → DLX, Log `parse error`                                           |
-| Falsche Feldzahl (z. B.`rows[i]` hat 40 statt 41) | Reject → DLX                                                                |
-| Ziel-Ordner nicht schreibbar                        | Reject → DLX, Log mit Path                                                  |
-| Bus-Disconnect                                      | lapin reconnected automatisch; Consumer-Stream endet, Task loggt `beendet` |
+| Situation                                           | Outcome                                                                       |
+| --------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Parse-Fehler (JSON kaputt, Pflichtfeld fehlt)       | `AckKind::Term` → `hag.dlq.>`, Log `parse error`                            |
+| Falsche Feldzahl (z. B. `rows[i]` hat 23 statt 24)  | `AckKind::Term` → `hag.dlq.>`                                               |
+| Ziel-Ordner nicht schreibbar                        | `AckKind::Term` → `hag.dlq.>`, Log mit Path                                 |
+| Bus-Disconnect                                      | async-nats reconnected automatisch; Subscription-Stream endet, Task loggt `beendet` |
 
-DLX sammelt auf `hag.events.dlx` — von dort per `rmq-test-suite`
-oder Management-UI inspizieren.
+DLQ läuft im `hag-events-dlq`-Stream — siehe Plattform-Repo
+`SUBJECT_SCHEMA.md §6` für Inspect/Replay.
 
 ## Bekannte Grenzen (Iteration 1)
 
@@ -269,8 +275,8 @@ Bewusst klein gehalten; offen für Folge-Tickets:
   (SQLite/Sidecar).
 - **Keine Rückmeldung vom WMS**: Ablehnungen/Parsing-Fehler
   seitens xLogix werden nicht erkannt. Ein
-  `wms.ingest-rejected`-Event wäre möglich, aktuell aber nicht
-  geplant.
+  `hag.events.internal.lager.ingest.rejected`-Event wäre möglich,
+  aktuell aber nicht geplant.
 - **ART-Schema ist 47 Felder fix**. Felder 42-47 (palGewicht,
   anzImGebinde, inhaltEinzelteil, materialGruppe, gebindeGewicht,
   kartonsProPalett) sind bei Schenk typisch leer, werden aber
@@ -289,8 +295,9 @@ Bewusst klein gehalten; offen für Folge-Tickets:
   hier konsumierten Events sind dort unter `contracts/schemas/events/`
   versioniert (v0.7.0).
 - **[Schenk WE Export](https://gitlab.hartmannag.de/it-hartmann/schenk_we_export)** —
-  Publisher für `wms.asn-ready`. Publisher für `wms.art-ready`
-  und `wms.order-ready` sind noch TBD (Ersatz für die heutigen
+  Publisher für `hag.events.internal.lager.asn.ready`. Publisher
+  für `hag.events.internal.lager.{article,order}.ready` sind noch
+  TBD (Ersatz für die heutigen
   Lobster-Profile).
 
 ## Lizenz

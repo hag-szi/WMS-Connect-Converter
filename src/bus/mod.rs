@@ -10,7 +10,7 @@ use std::pin::Pin;
 
 use crate::error::AppResult;
 
-pub mod rabbitmq;
+pub mod nats;
 
 /// Was der Handler dem Bus als Antwort auf eine Delivery zurückgibt.
 ///
@@ -34,12 +34,19 @@ pub type HandlerArc =
 
 #[async_trait]
 pub trait Consumer: Send + Sync {
-    /// Registriert einen Handler auf einer Queue. Läuft bis der
-    /// Consumer-Stream endet (z.B. bei Shutdown).
+    /// Hängt einen Handler an einen durable JetStream-Pull-Consumer.
+    /// `stream` ist der Stream-Name (z.B. `hag-events-dev`),
+    /// `durable` der Consumer-Name innerhalb des Streams (z.B.
+    /// `wms-connect-inbound-asn-dev`). Beide werden vorher per
+    /// `declare_topology.py --apply` provisioniert; der Service
+    /// **deklariert nichts selbst**.
+    /// `prefetch` mappt auf die `max_messages`-Batch-Größe der
+    /// Pull-Subscription. Läuft bis der Subscription-Stream endet
+    /// (z.B. bei Shutdown).
     async fn consume(
         &self,
-        queue: &str,
-        consumer_tag: &str,
+        stream: &str,
+        durable: &str,
         prefetch: u16,
         handler: HandlerArc,
     ) -> AppResult<()>;

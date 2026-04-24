@@ -1,8 +1,8 @@
-//! Writer für `wms.order-ready` → HL40/HL41/HL42(×N)/HL43-Satzblöcke
+//! Writer für `hag.events.internal.lager.order.ready` → HL40/HL41/HL42(×N)/HL43-Satzblöcke
 //! pro Auftrag; mehrere Aufträge in einer Datei sind OK (entspricht
 //! z.B. `510_..._23_auftraege.dat`).
 
-use crate::envelope::{WmsOrderItem, WmsOrderReadyData};
+use crate::envelope::{InternalLagerOrderItem, InternalLagerOrderReadyData};
 use crate::error::{AppError, AppResult};
 use crate::writer::{join_lines, pipe_join};
 
@@ -11,10 +11,10 @@ pub const HL41_FIELDS: usize = 15;
 pub const HL42_FIELDS: usize = 24;
 pub const HL43_FIELDS: usize = 3;
 
-pub fn render(data: &WmsOrderReadyData) -> AppResult<String> {
+pub fn render(data: &InternalLagerOrderReadyData) -> AppResult<String> {
     if data.orders.is_empty() {
         return Err(AppError::BadPayload(
-            "wms.order-ready: orders[] leer".into(),
+            "hag.events.internal.lager.order.ready: orders[] leer".into(),
         ));
     }
     let mut lines: Vec<String> = Vec::new();
@@ -30,7 +30,7 @@ pub fn render(data: &WmsOrderReadyData) -> AppResult<String> {
     Ok(join_lines(lines))
 }
 
-fn validate(order: &WmsOrderItem, idx: usize) -> AppResult<()> {
+fn validate(order: &InternalLagerOrderItem, idx: usize) -> AppResult<()> {
     if order.hl40.len() != HL40_FIELDS {
         return Err(AppError::BadPayload(format!(
             "orders[{idx}].hl40: {} Felder (erwartet {HL40_FIELDS})",
@@ -67,7 +67,7 @@ fn validate(order: &WmsOrderItem, idx: usize) -> AppResult<()> {
     Ok(())
 }
 
-fn hl43_resolved(order: &WmsOrderItem) -> Vec<String> {
+fn hl43_resolved(order: &InternalLagerOrderItem) -> Vec<String> {
     if let Some(hl43) = &order.hl43 {
         return hl43.clone();
     }
@@ -80,7 +80,7 @@ fn hl43_resolved(order: &WmsOrderItem) -> Vec<String> {
 mod tests {
     use super::*;
 
-    fn demo_order() -> WmsOrderItem {
+    fn demo_order() -> InternalLagerOrderItem {
         let hl40 = vec![
             "40",
             "1",
@@ -138,7 +138,7 @@ mod tests {
         .into_iter()
         .map(String::from)
         .collect();
-        WmsOrderItem {
+        InternalLagerOrderItem {
             hl40,
             hl41,
             positionen: vec![hl42],
@@ -148,7 +148,7 @@ mod tests {
 
     #[test]
     fn hl43_wird_aus_hl40_abgeleitet() {
-        let data = WmsOrderReadyData {
+        let data = InternalLagerOrderReadyData {
             mandant: "520".into(),
             orders: vec![demo_order()],
         };
@@ -161,7 +161,7 @@ mod tests {
 
     #[test]
     fn mehrere_auftraege() {
-        let data = WmsOrderReadyData {
+        let data = InternalLagerOrderReadyData {
             mandant: "510".into(),
             orders: vec![demo_order(), demo_order()],
         };
@@ -174,7 +174,7 @@ mod tests {
     fn fehler_bei_falscher_feldzahl() {
         let mut o = demo_order();
         o.hl40.pop();
-        let data = WmsOrderReadyData {
+        let data = InternalLagerOrderReadyData {
             mandant: "520".into(),
             orders: vec![o],
         };

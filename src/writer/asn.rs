@@ -1,4 +1,4 @@
-//! Writer für `wms.asn-ready` → 25 pipe-delimited Felder je Palette.
+//! Writer für `hag.events.internal.lager.asn.ready` → 25 pipe-delimited Felder je Palette.
 //!
 //! Felder 1, 2, 8, 11, 12, 16, 19, 20, 22, 23, 24 sind Fixwerte bzw.
 //! leer/timestamp und werden von uns erzeugt. Die Event-Payload
@@ -8,7 +8,7 @@
 
 use chrono::Local;
 
-use crate::envelope::WmsAsnReadyData;
+use crate::envelope::InternalLagerAsnReadyData;
 use crate::writer::{join_lines, pipe_join};
 
 const FIXED_FIELD_01: &str = "30";
@@ -18,7 +18,7 @@ const FIXED_FIELD_16: &str = "0003";
 const FIXED_FIELD_20: &str = "000000000";
 
 /// Rendert die komplette Datei (ohne trailing CRLF).
-pub fn render(data: &WmsAsnReadyData) -> String {
+pub fn render(data: &InternalLagerAsnReadyData) -> String {
     let now = Local::now();
     let timestamp = now.format("%Y%m%d%H%M%S").to_string();
     let is_schenk = data.mandant == "520";
@@ -70,10 +70,10 @@ pub fn render(data: &WmsAsnReadyData) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::envelope::WmsAsnRow;
+    use crate::envelope::InternalLagerAsnRow;
 
-    fn row() -> WmsAsnRow {
-        WmsAsnRow {
+    fn row() -> InternalLagerAsnRow {
+        InternalLagerAsnRow {
             sscc: "940393360001716949".into(),
             we_nummer: "TA-1".into(),
             bestell_ref: "KA24/1".into(),
@@ -90,7 +90,7 @@ mod tests {
 
     #[test]
     fn schenk_hat_25_felder_und_feld14_menge() {
-        let data = WmsAsnReadyData {
+        let data = InternalLagerAsnReadyData {
             mandant: "520".into(),
             reference: "Schen/0424_1000".into(),
             rows: vec![row()],
@@ -104,7 +104,7 @@ mod tests {
 
     #[test]
     fn nicht_schenk_swap_feld14_15() {
-        let data = WmsAsnReadyData {
+        let data = InternalLagerAsnReadyData {
             mandant: "800".into(),
             reference: "800".into(),
             rows: vec![row()],
@@ -117,7 +117,7 @@ mod tests {
 
     #[test]
     fn ohne_trailing_crlf() {
-        let data = WmsAsnReadyData {
+        let data = InternalLagerAsnReadyData {
             mandant: "520".into(),
             reference: "r".into(),
             rows: vec![row(), row()],

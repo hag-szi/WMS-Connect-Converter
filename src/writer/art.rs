@@ -1,22 +1,22 @@
-//! Writer für `wms.art-ready` → 47 pipe-delimited Felder je Artikel.
+//! Writer für `hag.events.internal.lager.article.ready` → 47 pipe-delimited Felder je Artikel.
 //!
 //! Die Row kommt vom Publisher bereits als 47-Elemente-String-Array
 //! (Lobster-Profil-Konvention: Felder 42-47 sind ALDI-spezifisch und
 //! bleiben bei Schenk leer, aber ein Publisher MUSS sie als leere
 //! Strings mitschicken). Wir validieren die Länge und joinen 1:1.
 
-use crate::envelope::WmsArtReadyData;
+use crate::envelope::InternalLagerArticleReadyData;
 use crate::error::{AppError, AppResult};
 use crate::writer::{join_lines, pipe_join};
 
 pub const EXPECTED_FIELDS: usize = 47;
 
-pub fn render(data: &WmsArtReadyData) -> AppResult<String> {
+pub fn render(data: &InternalLagerArticleReadyData) -> AppResult<String> {
     // Jede Row exakt 41 Felder.
     for (idx, row) in data.rows.iter().enumerate() {
         if row.len() != EXPECTED_FIELDS {
             return Err(AppError::BadPayload(format!(
-                "wms.art-ready rows[{idx}]: {} Felder (erwartet {EXPECTED_FIELDS})",
+                "hag.events.internal.lager.article.ready rows[{idx}]: {} Felder (erwartet {EXPECTED_FIELDS})",
                 row.len()
             )));
         }
@@ -61,7 +61,7 @@ mod tests {
         // hatte 41 Felder weil Lobster trailing-empty-pipes abschneidet;
         // unser Schema verlangt sie explizit, damit ALDI-Mandanten die
         // Positionen 42-47 nutzen können. Für Schenk → 6× "" am Ende.
-        let data = WmsArtReadyData {
+        let data = InternalLagerArticleReadyData {
             mandant: "520".into(),
             trigger_artikelnr: Some("21248".into()),
             rows: vec![demo_row_schenk()],
@@ -83,7 +83,7 @@ mod tests {
         r[44] = "".into(); // materialGruppe (auch bei ALDI oft leer)
         r[45] = "6,930".into(); // gebindeGewicht
         r[46] = "110".into(); // kartonsProPalett
-        let data = WmsArtReadyData {
+        let data = InternalLagerArticleReadyData {
             mandant: "871".into(),
             trigger_artikelnr: Some("21248".into()),
             rows: vec![r],
@@ -95,7 +95,7 @@ mod tests {
 
     #[test]
     fn mehrere_rows_crlf_dazwischen() {
-        let data = WmsArtReadyData {
+        let data = InternalLagerArticleReadyData {
             mandant: "520".into(),
             trigger_artikelnr: None,
             rows: vec![demo_row_schenk(), demo_row_schenk()],
@@ -107,7 +107,7 @@ mod tests {
 
     #[test]
     fn fehler_bei_falscher_feldzahl() {
-        let data = WmsArtReadyData {
+        let data = InternalLagerArticleReadyData {
             mandant: "520".into(),
             trigger_artikelnr: None,
             rows: vec![vec!["10".into(); 41]],

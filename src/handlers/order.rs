@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::bus::{AckOutcome, HandlerArc};
-use crate::envelope::{Envelope, WmsOrderReadyData};
+use crate::envelope::{Envelope, InternalLagerOrderReadyData};
 use crate::error::AppResult;
 use crate::handlers::{render_filename, FilenameContext, SeqCounter};
 use crate::sink::OutputSink;
@@ -26,8 +26,11 @@ async fn handle(
     template: &str,
     body: &[u8],
 ) -> AppResult<AckOutcome> {
-    let env: Envelope<WmsOrderReadyData> = serde_json::from_slice(body)
-        .map_err(|e| crate::error::AppError::BadPayload(format!("wms.order-ready parse: {e}")))?;
+    let env: Envelope<InternalLagerOrderReadyData> = serde_json::from_slice(body).map_err(|e| {
+        crate::error::AppError::BadPayload(format!(
+            "hag.events.internal.lager.order.ready parse: {e}"
+        ))
+    })?;
     let content = order::render(&env.data)?;
     let auftragsnr = env
         .data
