@@ -10,10 +10,24 @@ use crate::mandant::MandantConfig;
 pub struct Config {
     pub logging: LoggingConfig,
     pub amqp: AmqpConfig,
+    /// Einheitliche Dateinamen-Templates pro Event-Typ — gelten für
+    /// alle Mandanten.
+    pub filenames: FilenamesConfig,
     /// Liste der bekannten Mandanten — unbekannte Mandanten in Events
-    /// landen per DLX beim Reject.
+    /// landen per DLX beim Reject. Pro Mandant nur noch
+    /// `key` + `output_dir`; der Dateiname ist mandant-unabhängig.
     #[serde(default)]
     pub mandant: Vec<MandantConfig>,
+}
+
+/// Templates für die drei Event-Typen. Platzhalter wie `{mandant}`,
+/// `{date:%Y%m%d}`, `{time:%H%M%S}`, `{seq:05}` werden beim Schreiben
+/// ersetzt; siehe `handlers::render_filename`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct FilenamesConfig {
+    pub asn: String,
+    pub art: String,
+    pub order: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -50,9 +50,13 @@ async fn main() -> AppResult<()> {
     // Bus-Verbindung (lapin / RabbitMQ).
     let bus: Arc<dyn Consumer> = Arc::new(AmqpBus::connect_with_retry(&cfg.amqp.url).await?);
 
-    let h_asn = handlers::asn::make_handler(registry.clone(), sink.clone(), seq.clone());
-    let h_art = handlers::art::make_handler(registry.clone(), sink.clone(), seq.clone());
-    let h_order = handlers::order::make_handler(registry.clone(), sink.clone(), seq.clone());
+    let tpl_asn: Arc<str> = Arc::from(cfg.filenames.asn.as_str());
+    let tpl_art: Arc<str> = Arc::from(cfg.filenames.art.as_str());
+    let tpl_order: Arc<str> = Arc::from(cfg.filenames.order.as_str());
+    let h_asn = handlers::asn::make_handler(registry.clone(), sink.clone(), seq.clone(), tpl_asn);
+    let h_art = handlers::art::make_handler(registry.clone(), sink.clone(), seq.clone(), tpl_art);
+    let h_order =
+        handlers::order::make_handler(registry.clone(), sink.clone(), seq.clone(), tpl_order);
 
     let prefetch = cfg.amqp.prefetch;
     let b_asn = bus.clone();

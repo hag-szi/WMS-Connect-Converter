@@ -12,12 +12,14 @@ pub fn make_handler(
     registry: Arc<MandantRegistry>,
     sink: Arc<dyn OutputSink>,
     seq: Arc<SeqCounter>,
+    template: Arc<str>,
 ) -> HandlerArc {
     Arc::new(move |body: Vec<u8>| {
         let registry = registry.clone();
         let sink = sink.clone();
         let seq = seq.clone();
-        Box::pin(async move { handle(&registry, sink.as_ref(), &seq, &body).await })
+        let template = template.clone();
+        Box::pin(async move { handle(&registry, sink.as_ref(), &seq, &template, &body).await })
     })
 }
 
@@ -25,6 +27,7 @@ async fn handle(
     registry: &MandantRegistry,
     sink: &dyn OutputSink,
     seq: &SeqCounter,
+    template: &str,
     body: &[u8],
 ) -> AppResult<AckOutcome> {
     let env: Envelope<WmsAsnReadyData> = serde_json::from_slice(body)
@@ -38,7 +41,7 @@ async fn handle(
         trigger: None,
         auftragsnr: None,
     };
-    let filename = render_filename(&m.asn_file_name, &ctx)?;
+    let filename = render_filename(template, &ctx)?;
     let res = sink.write(&m.output_dir, &filename, &content)?;
     tracing::info!(
         event_id = %env.event_id,

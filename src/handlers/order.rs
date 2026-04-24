@@ -12,12 +12,14 @@ pub fn make_handler(
     registry: Arc<MandantRegistry>,
     sink: Arc<dyn OutputSink>,
     seq: Arc<SeqCounter>,
+    template: Arc<str>,
 ) -> HandlerArc {
     Arc::new(move |body: Vec<u8>| {
         let registry = registry.clone();
         let sink = sink.clone();
         let seq = seq.clone();
-        Box::pin(async move { handle(&registry, sink.as_ref(), &seq, &body).await })
+        let template = template.clone();
+        Box::pin(async move { handle(&registry, sink.as_ref(), &seq, &template, &body).await })
     })
 }
 
@@ -25,14 +27,16 @@ async fn handle(
     registry: &MandantRegistry,
     sink: &dyn OutputSink,
     seq: &SeqCounter,
+    template: &str,
     body: &[u8],
 ) -> AppResult<AckOutcome> {
     let env: Envelope<WmsOrderReadyData> = serde_json::from_slice(body)
         .map_err(|e| crate::error::AppError::BadPayload(format!("wms.order-ready parse: {e}")))?;
     let m = mandant_cfg(registry, &env.data.mandant)?;
     let content = order::render(&env.data)?;
-    // Auftragsnr aus dem ersten Auftrag zur Verfügung stellen
-    // (einige Mandanten-Templates nutzen `{auftragsnr}`).
+    // Auftragsnr aus dem ersten Auftrag; bleibt als Template-
+    // Platzhalter verfügbar, obwohl das neue einheitliche Schema
+    // sie nicht mehr in den Dateinamen bringt.
     let auftragsnr = env
         .data
         .orders
@@ -46,7 +50,7 @@ async fn handle(
         trigger: None,
         auftragsnr,
     };
-    let filename = render_filename(&m.order_file_name, &ctx)?;
+    let filename = render_filename(template, &ctx)?;
     let res = sink.write(&m.output_dir, &filename, &content)?;
     tracing::info!(
         event_id = %env.event_id,

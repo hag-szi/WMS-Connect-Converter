@@ -15,12 +15,6 @@ use crate::error::{AppError, AppResult};
 pub struct MandantConfig {
     /// Mandantennummer als String, z.B. "520", "871".
     pub key: String,
-    /// Dateinamen-Template für ASN-Exporte.
-    pub asn_file_name: String,
-    /// Dateinamen-Template für ART-Exporte.
-    pub art_file_name: String,
-    /// Dateinamen-Template für ORDER-Exporte.
-    pub order_file_name: String,
     /// Zielordner (lokal). SMB-Mount ist Deployment-Sache.
     pub output_dir: PathBuf,
 }
