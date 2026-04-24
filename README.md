@@ -10,7 +10,7 @@ in WMS-kompatible `.dat`-Dateien überführt. Ziel ist die Konvertierung fertige
 | Inbound-Event       | Was wird geschrieben                                                           |
 | ------------------- | ------------------------------------------------------------------------------ |
 | `wms.asn-ready`   | 25-Feld-ASN `.dat` (ein Pallet pro Zeile)                                    |
-| `wms.art-ready`   | 41-Feld-ART `.dat` (ein Artikel pro Zeile)                                   |
+| `wms.art-ready`   | 47-Feld-ART `.dat` (ein Artikel pro Zeile)                                   |
 | `wms.order-ready` | HL40/HL41/HL42(×N)/HL43-ORDER `.dat` (ein oder mehrere Aufträge pro Datei) |
 
 Alle Dateien: pipe-delimited (`|`), CRLF zwischen den Zeilen, **kein**
@@ -235,8 +235,13 @@ Bewusst klein gehalten; offen für Folge-Tickets:
   seitens xLogix werden nicht erkannt. Ein
   `wms.ingest-rejected`-Event wäre möglich, aktuell aber nicht
   geplant.
-- **Nur das 41-Feld-ART-Schema** (aktuelle Prod-Version). Das
-  alte 47-Feld-Schema wird nicht mehr unterstützt.
+- **ART-Schema ist 47 Felder fix**. Felder 42-47 (palGewicht,
+  anzImGebinde, inhaltEinzelteil, materialGruppe, gebindeGewicht,
+  kartonsProPalett) sind bei Schenk typisch leer, werden aber
+  bei ALDI-Mandanten real gefüllt — Publisher müssen sie
+  trotzdem immer als leere Strings mitschicken. Die 2026-04-
+  Schenk-Prod-Samples hatten nur 41 Felder, weil Lobster
+  trailing-empty-Pipes abschneidet; wir schneiden nichts ab.
 - **Kein SMB-Sink** — siehe *Was passiert nach dem `.dat`-Schreiben?*.
 
 ## Related
