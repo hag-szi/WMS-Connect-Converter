@@ -4,30 +4,23 @@ use serde::Deserialize;
 use std::path::PathBuf;
 
 use crate::error::{AppError, AppResult};
-use crate::mandant::MandantConfig;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     pub logging: LoggingConfig,
     pub amqp: AmqpConfig,
-    /// Einheitliche Dateinamen-Templates pro Event-Typ — gelten für
-    /// alle Mandanten.
+    /// Dateinamen-Templates pro Event-Typ — einheitlich für alle
+    /// Mandanten.
     pub filenames: FilenamesConfig,
-    /// Liste der bekannten Mandanten — unbekannte Mandanten in Events
-    /// landen per DLX beim Reject. Pro Mandant nur noch
-    /// `key` + `output_dir`; der Dateiname ist mandant-unabhängig.
+    /// Ziel-Ordner für alle geschriebenen `.dat`-Dateien. Im Prod
+    /// typisch ein CIFS-Mount auf den WMS-infiles-Share.
+    pub paths: PathsConfig,
+    /// Liste der bekannten Mandanten-Nummern (als String). Events
+    /// mit einer Mandantennummer, die nicht hier aufgelistet ist,
+    /// werden rejected (→ DLX). Eine leere Liste bedeutet: **alle**
+    /// Events landen im DLX — in Prod also immer befüllen.
     #[serde(default)]
-    pub mandant: Vec<MandantConfig>,
-}
-
-/// Templates für die drei Event-Typen. Platzhalter wie `{mandant}`,
-/// `{date:%Y%m%d}`, `{time:%H%M%S}`, `{seq:05}` werden beim Schreiben
-/// ersetzt; siehe `handlers::render_filename`.
-#[derive(Debug, Clone, Deserialize)]
-pub struct FilenamesConfig {
-    pub asn: String,
-    pub art: String,
-    pub order: String,
+    pub known_mandants: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -38,10 +31,6 @@ pub struct LoggingConfig {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct AmqpConfig {
-    /// Vollständige AMQP-URI inkl. Credentials + Vhost, z.B.
-    /// `amqp://svc-wms-connect-dev:secret@hag-rmq:5672/%2F`.
-    /// Credentials gehören in eine Env-Variable
-    /// (`WMS_CONNECT__AMQP__URL`).
     pub url: String,
     pub inbound_queue_asn: String,
     pub inbound_queue_art: String,
@@ -52,6 +41,20 @@ pub struct AmqpConfig {
 
 fn default_prefetch() -> u16 {
     10
+}
+
+/// Dateinamen-Templates; siehe `handlers::render_filename` für die
+/// unterstützten Platzhalter.
+#[derive(Debug, Clone, Deserialize)]
+pub struct FilenamesConfig {
+    pub asn: String,
+    pub art: String,
+    pub order: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PathsConfig {
+    pub output_dir: PathBuf,
 }
 
 impl Config {

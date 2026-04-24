@@ -11,7 +11,6 @@ pub mod order;
 use chrono::Local;
 
 use crate::error::AppResult;
-use crate::mandant::MandantConfig;
 
 /// Expandiert das Dateinamen-Template eines Mandanten.
 /// Unterstützte Platzhalter:
@@ -107,14 +106,6 @@ impl Default for SeqCounter {
     fn default() -> Self {
         Self::new()
     }
-}
-
-/// Helper: holt MandantConfig aus Registry.
-pub fn mandant_cfg<'a>(
-    registry: &'a crate::mandant::MandantRegistry,
-    key: &str,
-) -> AppResult<&'a MandantConfig> {
-    registry.get(key)
 }
 
 #[cfg(test)]

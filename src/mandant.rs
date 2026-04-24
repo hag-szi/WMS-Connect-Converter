@@ -1,47 +1,32 @@
-//! Mandant-spezifische Einstellungen: Dateinamen-Templates und
-//! Zielordner. Wird aus der TOML-Config gelesen und zur Laufzeit
-//! per HashMap indiziert. Unbekannter Mandant → Event landet im DLX.
+//! Mandant-Allowlist. Im Event-Payload steht eine Mandantennummer
+//! (`"520"`, `"871"`, …); der Converter prüft, ob sie in der
+//! konfigurierten Liste bekannt ist — unbekannte Mandanten → DLX.
 //!
-//! Encoding ist **nicht** mandant-abhängig — alle Dateien werden
-//! UTF-8 geschrieben (siehe `sink::local_fs`).
+//! Es gibt **keinen** pro-Mandant `output_dir` und **keine**
+//! pro-Mandant Dateinamen-Templates mehr: alle `.dat`-Dateien landen
+//! in einem einzigen Zielordner (der WMS-inbound-Share), das Schema
+//! ist einheitlich.
 
-use serde::Deserialize;
-use std::collections::HashMap;
-use std::path::PathBuf;
+use std::collections::HashSet;
 
 use crate::error::{AppError, AppResult};
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct MandantConfig {
-    /// Mandantennummer als String, z.B. "520", "871".
-    pub key: String,
-    /// Zielordner (lokal). SMB-Mount ist Deployment-Sache.
-    pub output_dir: PathBuf,
-}
-
-/// Nachschlag-Helper; baut aus `Vec<MandantConfig>` eine Map per `key`.
 pub struct MandantRegistry {
-    by_key: HashMap<String, MandantConfig>,
+    allowed: HashSet<String>,
 }
 
 impl MandantRegistry {
-    pub fn from_list(list: Vec<MandantConfig>) -> AppResult<Self> {
-        let mut by_key = HashMap::with_capacity(list.len());
-        for m in list {
-            let prev = by_key.insert(m.key.clone(), m);
-            if let Some(dup) = prev {
-                return Err(AppError::Config(format!(
-                    "mandant-key {:?} doppelt in Config",
-                    dup.key
-                )));
-            }
+    pub fn from_list(list: Vec<String>) -> Self {
+        Self {
+            allowed: list.into_iter().collect(),
         }
-        Ok(Self { by_key })
     }
 
-    pub fn get(&self, key: &str) -> AppResult<&MandantConfig> {
-        self.by_key
-            .get(key)
-            .ok_or_else(|| AppError::UnknownMandant(key.to_string()))
+    pub fn check(&self, key: &str) -> AppResult<()> {
+        if self.allowed.contains(key) {
+            Ok(())
+        } else {
+            Err(AppError::UnknownMandant(key.to_string()))
+        }
     }
 }

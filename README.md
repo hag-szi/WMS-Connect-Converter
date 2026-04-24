@@ -21,10 +21,6 @@ Mandanten. Der Dateiname folgt ebenfalls einem einheitlichen Muster
 {mandant}_{asn|art|order}_{YYYYMMDD}_{HHMMSS}_{seq:05}.dat
 ```
 
-(Das alte Lobster-Durcheinander aus mandant-spezifischen Templates
-— ALDI mit `{dd.mm.yyyy}_{auftragsnr}`, Netto mit `{count}_auftraege`,
-usw. — fällt weg.)
-
 ## Architektur
 
 ```
@@ -60,8 +56,9 @@ usw. — fällt weg.)
                                   │
                                   ▼
                     ┌──────────────────────────┐
-                    │ Zielordner je Mandant    │
-                    │ (lokal oder SMB-Mount)   │
+                    │ WMS-infiles-Zielordner   │
+                    │ (ein gemeinsamer Share,  │
+                    │  lokal oder CIFS-Mount)  │
                     └──────────────────────────┘
 ```
 
@@ -140,36 +137,36 @@ besser per Env-Variable — figment nimmt `WMS_CONNECT__`-präfixierte
 Vars mit `__` als Sektions-Separator, z. B.
 `WMS_CONNECT__AMQP__URL=amqp://svc-wms-connect-prod:...@broker/%2F`.
 
-Die Dateinamen-Templates sind global (ein Template pro Event-Typ,
-gilt für alle Mandanten). Pro Mandant brauchst du nur noch `key`
-und `output_dir`:
+Ein einziger Zielordner für alle Mandanten und alle drei Event-Typen;
+die Dateinamen-Templates sind ebenfalls global. Mandanten werden
+per Allowlist geprüft — unbekannte Nummern landen im DLX.
 
 ```toml
+[paths]
+output_dir = "/mnt/wms-infiles"
+
 [filenames]
 asn   = "{mandant}_asn_{date:%Y%m%d}_{time:%H%M%S}_{seq:05}.dat"
 art   = "{mandant}_art_{date:%Y%m%d}_{time:%H%M%S}_{seq:05}.dat"
 order = "{mandant}_order_{date:%Y%m%d}_{time:%H%M%S}_{seq:05}.dat"
 
-[[mandant]]
-key        = "520"
-output_dir = "/srv/wms-connect/out/520"
-
-[[mandant]]
-key        = "871"   # ALDI
-output_dir = "/srv/wms-connect/aldi/871"
+known_mandants = [
+  "520", "510",
+  "871", "875", "877", "885", "886", "889",
+]
 ```
 
 **Dateinamen-Platzhalter** (siehe `src/handlers/mod.rs::render_filename`):
 
-| Platzhalter         | Quelle                                                                   |
-| ------------------- | ------------------------------------------------------------------------ |
-| `{mandant}`         | Mandantennummer aus dem Event                                            |
-| `{date:FORMAT}`     | `chrono::Local::now().format(FORMAT)` (z. B. `%Y%m%d`)                   |
-| `{time:FORMAT}`     | wie oben (z. B. `%H%M%S`)                                                |
-| `{seq}`, `{seq:05}` | Pro-Mandant in-memory Counter, optional zero-padded                      |
-| `{count}`           | Anzahl Rows (ART) bzw. Orders (ORDER) im Event — im Default-Schema ungenutzt |
-| `{trigger}`         | ART-only: `trigger_artikelnr` aus dem Event — im Default-Schema ungenutzt |
-| `{auftragsnr}`      | ORDER-only: `hl40[2]` des ersten Auftrags — im Default-Schema ungenutzt  |
+| Platzhalter             | Quelle                                                                        |
+| ----------------------- | ----------------------------------------------------------------------------- |
+| `{mandant}`           | Mandantennummer aus dem Event                                                 |
+| `{date:FORMAT}`       | `chrono::Local::now().format(FORMAT)` (z. B. `%Y%m%d`)                    |
+| `{time:FORMAT}`       | wie oben (z. B.`%H%M%S`)                                                    |
+| `{seq}`, `{seq:05}` | Pro-Mandant in-memory Counter, optional zero-padded                           |
+| `{count}`             | Anzahl Rows (ART) bzw. Orders (ORDER) im Event — im Default-Schema ungenutzt |
+| `{trigger}`           | ART-only:`trigger_artikelnr` aus dem Event — im Default-Schema ungenutzt   |
+| `{auftragsnr}`        | ORDER-only:`hl40[2]` des ersten Auftrags — im Default-Schema ungenutzt     |
 
 Die letzten drei Platzhalter sind erhalten geblieben, damit in
 Sonderfällen ein abweichendes Template möglich ist. Default sollte

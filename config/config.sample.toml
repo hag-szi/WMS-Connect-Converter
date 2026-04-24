@@ -13,6 +13,12 @@ inbound_queue_art    = "wms-connect.inbound.art.dev"
 inbound_queue_order  = "wms-connect.inbound.order.dev"
 prefetch             = 10
 
+# Zielordner. WMS erwartet einen einzigen infiles-Share; alle drei
+# Event-Typen und alle Mandanten schreiben in diesen Ordner (in Prod
+# ein CIFS-Mount, z.B. /mnt/wms-infiles).
+[paths]
+output_dir = "out"
+
 # Einheitliches Dateinamen-Schema für alle Mandanten und alle drei
 # Event-Typen. Platzhalter:
 #   {mandant}              Mandantennummer aus dem Event
@@ -28,18 +34,10 @@ asn   = "{mandant}_asn_{date:%Y%m%d}_{time:%H%M%S}_{seq:05}.dat"
 art   = "{mandant}_art_{date:%Y%m%d}_{time:%H%M%S}_{seq:05}.dat"
 order = "{mandant}_order_{date:%Y%m%d}_{time:%H%M%S}_{seq:05}.dat"
 
-# Ein Eintrag pro Mandant. Nur `key` + `output_dir` — der Dateiname
-# kommt aus [filenames] und ist mandant-unabhängig. Unbekannte
-# Mandanten in Events werden per DLX abgelehnt.
-[[mandant]]
-key        = "520"
-output_dir = "out/520"
-
-[[mandant]]
-key        = "510"
-output_dir = "out/510"
-
-# ALDI-Familie: 871/875/877/885/886/889 analog.
-[[mandant]]
-key        = "871"
-output_dir = "out/aldi/871"
+# Allowlist bekannter Mandanten. Events mit einer Mandantennummer,
+# die nicht aufgelistet ist, werden rejected (→ DLX).
+known_mandants = [
+  "520",           # Schenk
+  "510",           # Netto
+  "871", "875", "877", "885", "886", "889",  # ALDI-Familie
+]
