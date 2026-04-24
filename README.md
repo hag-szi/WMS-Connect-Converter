@@ -1,3 +1,4 @@
+
 # WMS Connect Converter
 
 Bus-Consumer, der drei Event-Typen vom
@@ -73,18 +74,18 @@ Logik in `src/handlers/` kennt nur das Trait.
 ### Pro-Event-Pfad
 
 1. **Consumer** liest Rohbytes, reicht sie an den Handler.
-2. **Handler** deserialisiert `Envelope<T>` (serde), schlägt
-   den Mandanten in der Registry nach, rendert den Datei-Content
-   mit dem passenden `writer::*::render(...)`, bestimmt den
-   Dateinamen aus dem Template und delegiert an den Sink.
+2. **Handler** deserialisiert `Envelope<T>` (serde), rendert den
+   Datei-Content mit dem passenden `writer::*::render(...)`,
+   bestimmt den Dateinamen aus dem Template und delegiert an den
+   Sink.
 3. **Sink** schreibt den gerenderten String UTF-8-kodiert per
    `std::fs::write`.
 4. **Ack** zurück an den Bus.
 
-Fehler (Parse-Fehler, unbekannter Mandant, falsche Feldzahl im
-Payload, Sink-IO-Fehler) werden zu `AckOutcome::RejectToDlx` und
-die Message landet in der Dead-Letter-Queue — **nicht** Requeue,
-damit defekte Payloads nicht endlos rezirkulieren.
+Fehler (Parse-Fehler, falsche Feldzahl im Payload, Sink-IO-Fehler)
+werden zu `AckOutcome::RejectToDlx` und die Message landet in der
+Dead-Letter-Queue — **nicht** Requeue, damit defekte Payloads
+nicht endlos rezirkulieren.
 
 ## Was passiert **nach** dem `.dat`-Schreiben?
 
@@ -138,8 +139,10 @@ Vars mit `__` als Sektions-Separator, z. B.
 `WMS_CONNECT__AMQP__URL=amqp://svc-wms-connect-prod:...@broker/%2F`.
 
 Ein einziger Zielordner für alle Mandanten und alle drei Event-Typen;
-die Dateinamen-Templates sind ebenfalls global. Mandanten werden
-per Allowlist geprüft — unbekannte Nummern landen im DLX.
+die Dateinamen-Templates sind ebenfalls global. Die Mandantennummer
+aus dem Event fließt in den Dateinamen ein, wird sonst aber nicht
+validiert — das Contract-Schema (JSON Schema auf der Publisher-
+Seite) ist die einzige Schranke.
 
 ```toml
 [paths]
@@ -149,11 +152,6 @@ output_dir = "/mnt/wms-infiles"
 asn   = "{mandant}_asn_{date:%Y%m%d}_{time:%H%M%S}_{seq:05}.dat"
 art   = "{mandant}_art_{date:%Y%m%d}_{time:%H%M%S}_{seq:05}.dat"
 order = "{mandant}_order_{date:%Y%m%d}_{time:%H%M%S}_{seq:05}.dat"
-
-known_mandants = [
-  "520", "510",
-  "871", "875", "877", "885", "886", "889",
-]
 ```
 
 **Dateinamen-Platzhalter** (siehe `src/handlers/mod.rs::render_filename`):
@@ -206,8 +204,7 @@ Die Tests decken ab:
 
 ### Start-Sequenz
 
-1. Config laden + Mandant-Registry validieren (Duplikate im
-   `key`-Feld führen sofort zum Abbruch).
+1. Config laden + Logging aufsetzen.
 2. AMQP-Verbindung mit Retry (10 Versuche × 3 s Pause).
 3. Drei Consumer-Tasks spawnen, je ein Handler pro Queue.
 4. Warten auf `SIGINT`.
@@ -217,7 +214,6 @@ Die Tests decken ab:
 | Situation                                           | Outcome                                                                      |
 | --------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Parse-Fehler (JSON kaputt, Pflichtfeld fehlt)       | Reject → DLX, Log `parse error`                                           |
-| Unbekannter Mandant im Event                        | Reject → DLX, Log `mandant not in registry`                               |
 | Falsche Feldzahl (z. B.`rows[i]` hat 40 statt 41) | Reject → DLX                                                                |
 | Ziel-Ordner nicht schreibbar                        | Reject → DLX, Log mit Path                                                  |
 | Bus-Disconnect                                      | lapin reconnected automatisch; Consumer-Stream endet, Task loggt `beendet` |

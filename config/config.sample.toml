@@ -33,11 +33,3 @@ output_dir = "out"
 asn   = "{mandant}_asn_{date:%Y%m%d}_{time:%H%M%S}_{seq:05}.dat"
 art   = "{mandant}_art_{date:%Y%m%d}_{time:%H%M%S}_{seq:05}.dat"
 order = "{mandant}_order_{date:%Y%m%d}_{time:%H%M%S}_{seq:05}.dat"
-
-# Allowlist bekannter Mandanten. Events mit einer Mandantennummer,
-# die nicht aufgelistet ist, werden rejected (→ DLX).
-known_mandants = [
-  "520",           # Schenk
-  "510",           # Netto
-  "871", "875", "877", "885", "886", "889",  # ALDI-Familie
-]

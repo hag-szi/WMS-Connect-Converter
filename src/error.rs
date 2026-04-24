@@ -11,9 +11,6 @@ pub enum AppError {
     #[error("bad event payload: {0}")]
     BadPayload(String),
 
-    #[error("mandant {0:?} not in registry")]
-    UnknownMandant(String),
-
     #[error("{0}")]
     Other(#[from] anyhow::Error),
 }

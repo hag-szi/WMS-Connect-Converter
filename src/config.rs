@@ -15,12 +15,6 @@ pub struct Config {
     /// Ziel-Ordner für alle geschriebenen `.dat`-Dateien. Im Prod
     /// typisch ein CIFS-Mount auf den WMS-infiles-Share.
     pub paths: PathsConfig,
-    /// Liste der bekannten Mandanten-Nummern (als String). Events
-    /// mit einer Mandantennummer, die nicht hier aufgelistet ist,
-    /// werden rejected (→ DLX). Eine leere Liste bedeutet: **alle**
-    /// Events landen im DLX — in Prod also immer befüllen.
-    #[serde(default)]
-    pub known_mandants: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

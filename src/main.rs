@@ -8,7 +8,6 @@ mod envelope;
 mod error;
 mod handlers;
 mod logging;
-mod mandant;
 mod sink;
 mod writer;
 
@@ -17,7 +16,6 @@ use bus::Consumer;
 use config::Config;
 use error::AppResult;
 use handlers::SeqCounter;
-use mandant::MandantRegistry;
 use sink::local_fs::LocalFsSink;
 
 #[derive(Parser, Debug)]
@@ -38,15 +36,10 @@ async fn main() -> AppResult<()> {
     })?;
 
     tracing::info!(
-        mandanten = cfg.known_mandants.len(),
         output_dir = %cfg.paths.output_dir.display(),
         "wms-connect-converter startet"
     );
-    if cfg.known_mandants.is_empty() {
-        tracing::warn!("known_mandants ist leer — alle Events werden rejected (DLX)");
-    }
 
-    let registry = Arc::new(MandantRegistry::from_list(cfg.known_mandants.clone()));
     let sink: Arc<dyn sink::OutputSink> = Arc::new(LocalFsSink);
     let seq = Arc::new(SeqCounter::new());
     let output_dir = Arc::new(cfg.paths.output_dir.clone());
@@ -57,27 +50,10 @@ async fn main() -> AppResult<()> {
     let tpl_asn: Arc<str> = Arc::from(cfg.filenames.asn.as_str());
     let tpl_art: Arc<str> = Arc::from(cfg.filenames.art.as_str());
     let tpl_order: Arc<str> = Arc::from(cfg.filenames.order.as_str());
-    let h_asn = handlers::asn::make_handler(
-        registry.clone(),
-        sink.clone(),
-        seq.clone(),
-        tpl_asn,
-        output_dir.clone(),
-    );
-    let h_art = handlers::art::make_handler(
-        registry.clone(),
-        sink.clone(),
-        seq.clone(),
-        tpl_art,
-        output_dir.clone(),
-    );
-    let h_order = handlers::order::make_handler(
-        registry.clone(),
-        sink.clone(),
-        seq.clone(),
-        tpl_order,
-        output_dir.clone(),
-    );
+    let h_asn = handlers::asn::make_handler(sink.clone(), seq.clone(), tpl_asn, output_dir.clone());
+    let h_art = handlers::art::make_handler(sink.clone(), seq.clone(), tpl_art, output_dir.clone());
+    let h_order =
+        handlers::order::make_handler(sink.clone(), seq.clone(), tpl_order, output_dir.clone());
 
     let prefetch = cfg.amqp.prefetch;
     let b_asn = bus.clone();
