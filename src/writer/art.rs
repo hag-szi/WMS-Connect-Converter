@@ -1,13 +1,15 @@
-//! Writer für `wms.art-ready` → 41 pipe-delimited Felder je Artikel.
+//! Writer für `wms.art-ready` → 47 pipe-delimited Felder je Artikel.
 //!
-//! Die Row kommt vom Publisher bereits als 41-Elemente-String-Array;
-//! wir validieren die Länge und joinen 1:1.
+//! Die Row kommt vom Publisher bereits als 47-Elemente-String-Array
+//! (Lobster-Profil-Konvention: Felder 42-47 sind ALDI-spezifisch und
+//! bleiben bei Schenk leer, aber ein Publisher MUSS sie als leere
+//! Strings mitschicken). Wir validieren die Länge und joinen 1:1.
 
 use crate::envelope::WmsArtReadyData;
 use crate::error::{AppError, AppResult};
 use crate::writer::{join_lines, pipe_join};
 
-pub const EXPECTED_FIELDS: usize = 41;
+pub const EXPECTED_FIELDS: usize = 47;
 
 pub fn render(data: &WmsArtReadyData) -> AppResult<String> {
     // Jede Row exakt 41 Felder.
@@ -27,8 +29,9 @@ pub fn render(data: &WmsArtReadyData) -> AppResult<String> {
 mod tests {
     use super::*;
 
-    fn demo_row() -> Vec<String> {
-        let mut r = vec![String::new(); 41];
+    fn demo_row_schenk() -> Vec<String> {
+        // 47 Felder, bei Schenk sind 42-47 (0-based 41-46) leer.
+        let mut r = vec![String::new(); 47];
         r[0] = "10".into();
         r[1] = "1".into();
         r[2] = "21248".into();
@@ -53,16 +56,41 @@ mod tests {
     }
 
     #[test]
-    fn byteweise_gegen_prod_beispiel() {
-        // Line aus 520_art_20260414_102107_00001_84572.dat (Inhalt: 21248).
+    fn schenk_row_haengt_sechs_leere_felder_an() {
+        // Lobster-Prod-Zeile (Artikel 21248) auf der 2026-04-Pipeline
+        // hatte 41 Felder weil Lobster trailing-empty-pipes abschneidet;
+        // unser Schema verlangt sie explizit, damit ALDI-Mandanten die
+        // Positionen 42-47 nutzen können. Für Schenk → 6× "" am Ende.
         let data = WmsArtReadyData {
             mandant: "520".into(),
             trigger_artikelnr: Some("21248".into()),
-            rows: vec![demo_row()],
+            rows: vec![demo_row_schenk()],
         };
         let rendered = render(&data).unwrap();
-        let expected = "10|1|21248|||PSQ CAPITOLO SOAVE 1,5 L|||000000000||0|0|0||||||000001||ST|KAR|Karton|1|||30,500|35,500|20,500||||||||MART.Wein|8007880175356|8007880170306||5";
+        let expected = "10|1|21248|||PSQ CAPITOLO SOAVE 1,5 L|||000000000||0|0|0||||||000001||ST|KAR|Karton|1|||30,500|35,500|20,500||||||||MART.Wein|8007880175356|8007880170306||5||||||";
         assert_eq!(rendered, expected);
+        assert_eq!(rendered.split('|').count(), 47);
+    }
+
+    #[test]
+    fn aldi_row_haelt_die_sechs_felder_gefuellt() {
+        // ALDI-Mandanten füllen palGewicht/anzImGebinde/... Das sind
+        // Platzhalter — exakte Prod-Werte bekommen wir beim Publisher.
+        let mut r = demo_row_schenk();
+        r[41] = "782,3".into(); // palGewicht
+        r[42] = "6.000".into(); // anzImGebinde
+        r[43] = "0,75".into(); // inhaltEinzelteil
+        r[44] = "".into(); // materialGruppe (auch bei ALDI oft leer)
+        r[45] = "6,930".into(); // gebindeGewicht
+        r[46] = "110".into(); // kartonsProPalett
+        let data = WmsArtReadyData {
+            mandant: "871".into(),
+            trigger_artikelnr: Some("21248".into()),
+            rows: vec![r],
+        };
+        let rendered = render(&data).unwrap();
+        assert!(rendered.ends_with("|782,3|6.000|0,75||6,930|110"));
+        assert_eq!(rendered.split('|').count(), 47);
     }
 
     #[test]
@@ -70,7 +98,7 @@ mod tests {
         let data = WmsArtReadyData {
             mandant: "520".into(),
             trigger_artikelnr: None,
-            rows: vec![demo_row(), demo_row()],
+            rows: vec![demo_row_schenk(), demo_row_schenk()],
         };
         let s = render(&data).unwrap();
         assert_eq!(s.matches("\r\n").count(), 1);
@@ -82,7 +110,7 @@ mod tests {
         let data = WmsArtReadyData {
             mandant: "520".into(),
             trigger_artikelnr: None,
-            rows: vec![vec!["10".into(); 40]],
+            rows: vec![vec!["10".into(); 41]],
         };
         assert!(render(&data).is_err());
     }

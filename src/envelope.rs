@@ -117,7 +117,7 @@ mod tests {
 
     #[test]
     fn art_round_trip() {
-        let mut row = vec![String::new(); 41];
+        let mut row = vec![String::new(); 47];
         row[0] = "10".into();
         row[1] = "1".into();
         row[2] = "07418".into();
@@ -133,7 +133,7 @@ mod tests {
             }
         });
         let env: Envelope<WmsArtReadyData> = serde_json::from_value(json).unwrap();
-        assert_eq!(env.data.rows[0].len(), 41);
+        assert_eq!(env.data.rows[0].len(), 47);
     }
 
     #[test]
