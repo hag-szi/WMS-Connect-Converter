@@ -110,13 +110,22 @@ Credentials gehen via Env (`USER`, `PASSWD`, optional `DOMAIN`)
 an `smbclient`, nicht via argv — `ps -ef` sieht das Passwort
 nicht.
 
+Transiente Fehler (DNS-Hickup, kurzer Netzausfall, Lobster
+gerade am Restart) führen zu Non-Zero-Exit von `smbclient`. Der
+Sink wiederholt bis zu `retry_attempts`-mal mit linearem Backoff
+(`attempt × 1s`). Erst danach landet die Message im DLX —
+dauerhafte Auth- oder Konfig-Fehler fallen so trotzdem schnell
+durch, transiente Hickups verschwinden geräuschlos.
+
 ```toml
 [smb]
 server   = "192.168.4.153"
+port     = 445             # Default; 139 wäre NetBIOS
 share    = "infiles"
-# subdir = "wms"          # optional, default = Share-Root
+# subdir = "wms"           # optional, default = Share-Root
 username = "svc-wms-connect"
 password = "..."           # besser per WMS_CONNECT__SMB__PASSWORD
+retry_attempts = 3         # Default
 # domain         = "HARTMANN"
 # smbclient_bin  = "/usr/bin/smbclient"
 ```

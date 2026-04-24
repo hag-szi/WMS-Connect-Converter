@@ -11,8 +11,15 @@
 //! Credentials gehen über die Umgebung (`USER`, `PASSWD`,
 //! ggf. `DOMAIN`) und nicht via argv — sonst stünden sie für jeden
 //! `ps -ef`-Aufruf sichtbar im Prozessbaum.
+//!
+//! Retry: transiente Fehler (DNS-Hickup, kurze Netzunterbrechung,
+//! Lobster gerade am Restart) führen `smbclient` zu Non-Zero-Exit.
+//! Wir wiederholen bis zu `retry_attempts`-mal mit linearem
+//! Backoff (`attempt * 1s`); permanente Fehler (Auth, Share fehlt)
+//! schlagen ohnehin gleich aus, dafür ist der DLX da.
 
 use std::process::Stdio;
+use std::time::Duration;
 
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
@@ -24,6 +31,8 @@ use crate::error::{AppError, AppResult};
 pub struct SmbConfig {
     /// SMB-Server, z.B. `192.168.4.153` oder `wms-fs.lan`.
     pub server: String,
+    /// SMB-Port (default 445).
+    pub port: u16,
     /// Share-Name auf dem Server (ohne führende Slashes), z.B. `infiles`.
     pub share: String,
     /// Optionaler Subordner innerhalb des Shares, z.B. `wms/520`.
@@ -35,6 +44,9 @@ pub struct SmbConfig {
     pub domain: Option<String>,
     /// Pfad zum `smbclient`-Binary. Default `smbclient` (PATH-Lookup).
     pub smbclient_bin: String,
+    /// Anzahl Schreibversuche pro Datei. Linearer Backoff zwischen
+    /// den Versuchen (`attempt * 1s`).
+    pub retry_attempts: u32,
 }
 
 pub struct SmbSink {
@@ -59,10 +71,11 @@ impl SmbSink {
     }
 }
 
-#[async_trait::async_trait]
-impl OutputSink for SmbSink {
-    async fn write(&self, filename: &str, content: &str) -> AppResult<WriteResult> {
-        let bytes = content.as_bytes();
+impl SmbSink {
+    /// Ein einziger smbclient-Versuch. Liefert bei Non-Zero-Exit
+    /// einen `AppError` mit Stderr/Stdout zurück, damit der äußere
+    /// Retry-Loop entscheiden kann.
+    async fn try_upload(&self, filename: &str, bytes: &[u8]) -> AppResult<()> {
         let tmp_name = format!("{filename}.tmp");
 
         // smbclient liest die zu uploadende Datei aus stdin, wenn das
@@ -79,6 +92,8 @@ impl OutputSink for SmbSink {
 
         let mut cmd = Command::new(&self.cfg.smbclient_bin);
         cmd.arg(self.share_url())
+            .arg("-p")
+            .arg(self.cfg.port.to_string())
             .arg("-c")
             .arg(&script)
             // Kein Pager, kein interaktives Auth-Prompt — wenn die Creds
@@ -131,11 +146,51 @@ impl OutputSink for SmbSink {
                 stdout.trim()
             )));
         }
+        Ok(())
+    }
+}
 
-        Ok(WriteResult {
-            path: self.display_path(filename),
-            bytes: bytes.len(),
-        })
+#[async_trait::async_trait]
+impl OutputSink for SmbSink {
+    async fn write(&self, filename: &str, content: &str) -> AppResult<WriteResult> {
+        let bytes = content.as_bytes();
+        // Mindestens ein Versuch — `retry_attempts = 0` würde sonst
+        // gar nichts machen.
+        let max = self.cfg.retry_attempts.max(1);
+        let mut last_err: Option<AppError> = None;
+        for attempt in 1..=max {
+            match self.try_upload(filename, bytes).await {
+                Ok(()) => {
+                    if attempt > 1 {
+                        tracing::info!(
+                            file = %filename,
+                            attempt,
+                            "smb-upload nach retry erfolgreich"
+                        );
+                    }
+                    return Ok(WriteResult {
+                        path: self.display_path(filename),
+                        bytes: bytes.len(),
+                    });
+                }
+                Err(e) => {
+                    if attempt < max {
+                        let backoff = Duration::from_secs(attempt as u64);
+                        tracing::warn!(
+                            file = %filename,
+                            attempt,
+                            max,
+                            backoff_secs = backoff.as_secs(),
+                            error = %e,
+                            "smb-upload fehlgeschlagen, retry"
+                        );
+                        tokio::time::sleep(backoff).await;
+                    }
+                    last_err = Some(e);
+                }
+            }
+        }
+        Err(last_err.expect("retry-loop ohne Fehler beendet"))
     }
 }
 
@@ -147,12 +202,14 @@ mod tests {
     fn share_url_format() {
         let cfg = SmbConfig {
             server: "192.168.4.153".into(),
+            port: 445,
             share: "infiles".into(),
             subdir: None,
             username: "u".into(),
             password: "p".into(),
             domain: None,
             smbclient_bin: "smbclient".into(),
+            retry_attempts: 3,
         };
         assert_eq!(SmbSink::new(cfg).share_url(), "//192.168.4.153/infiles");
     }
@@ -161,12 +218,14 @@ mod tests {
     fn display_path_with_subdir() {
         let cfg = SmbConfig {
             server: "192.168.4.153".into(),
+            port: 445,
             share: "infiles".into(),
             subdir: Some("wms/520".into()),
             username: "u".into(),
             password: "p".into(),
             domain: None,
             smbclient_bin: "smbclient".into(),
+            retry_attempts: 3,
         };
         assert_eq!(
             SmbSink::new(cfg).display_path("520_asn_x.dat"),
@@ -174,16 +233,40 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn retry_loop_liefert_fehler_durch() {
+        // smbclient-Binary mit Sicherheit nicht auf PATH: der Versuch
+        // schlägt sofort beim spawn fehl. Mit `retry_attempts = 1`
+        // gibt es keine Sleeps zwischen Versuchen — der Test bleibt
+        // schnell und prüft nur, dass der Fehler propagiert wird.
+        let cfg = SmbConfig {
+            server: "127.0.0.1".into(),
+            port: 1,
+            share: "x".into(),
+            subdir: None,
+            username: "u".into(),
+            password: "p".into(),
+            domain: None,
+            smbclient_bin: "/nonexistent/smbclient-binary".into(),
+            retry_attempts: 1,
+        };
+        let sink = SmbSink::new(cfg);
+        let res = sink.write("t.dat", "x").await;
+        assert!(res.is_err(), "darf nicht erfolgreich werden");
+    }
+
     #[test]
     fn display_path_share_root() {
         let cfg = SmbConfig {
             server: "192.168.4.153".into(),
+            port: 445,
             share: "infiles".into(),
             subdir: None,
             username: "u".into(),
             password: "p".into(),
             domain: None,
             smbclient_bin: "smbclient".into(),
+            retry_attempts: 3,
         };
         assert_eq!(
             SmbSink::new(cfg).display_path("x.dat"),

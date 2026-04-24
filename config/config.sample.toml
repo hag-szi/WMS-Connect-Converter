@@ -44,11 +44,16 @@ order = "{mandant}_order_{date:%Y%m%d}_{time:%H%M%S}_{seq:05}.dat"
 ## Wenn `[smb]` gesetzt ist, wird `[paths]` ignoriert.
 [smb]
 server   = "192.168.4.153"
+port     = 445                # Direct-SMB-over-TCP; 139 wäre NetBIOS
 share    = "infiles"
 # subdir innerhalb des Shares; weglassen → Datei landet im Share-Root.
 # subdir = "wms"
 username = "svc-wms-connect"
 password = "CHANGEME"
+# Schreibversuche pro Datei. Linearer Backoff (attempt × 1s) zwischen
+# den Versuchen — nur transiente Fehler profitieren, permanente
+# Auth-/Konfig-Fehler scheitern nach `retry_attempts` Versuchen ins DLX.
+retry_attempts = 3
 # Optionale Windows-Domain bzw. Workgroup:
 # domain = "HARTMANN"
 # Pfad zum smbclient-Binary; default = "smbclient" (PATH-Lookup).

@@ -38,12 +38,14 @@ fn build_sink(cfg: &Config) -> AppResult<Arc<dyn OutputSink>> {
         );
         Ok(Arc::new(SmbSink::new(SinkSmbConfig {
             server: smb.server.clone(),
+            port: smb.port,
             share: smb.share.clone(),
             subdir: smb.subdir.clone(),
             username: smb.username.clone(),
             password: smb.password.clone(),
             domain: smb.domain.clone(),
             smbclient_bin: smb.smbclient_bin.clone(),
+            retry_attempts: smb.retry_attempts,
         })))
     } else {
         // Fallback nur greifbar, weil `Config::load` sonst schon

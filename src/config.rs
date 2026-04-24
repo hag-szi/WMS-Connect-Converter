@@ -63,6 +63,9 @@ pub struct PathsConfig {
 pub struct SmbConfig {
     /// SMB-Server (IP oder Hostname), z.B. `192.168.4.153`.
     pub server: String,
+    /// SMB-Port. Default 445 (Direct-SMB-over-TCP); 139 wäre NetBIOS.
+    #[serde(default = "default_smb_port")]
+    pub port: u16,
     /// Share-Name (ohne führende Slashes), z.B. `infiles`.
     pub share: String,
     /// Optionaler Subordner innerhalb des Shares; leer/Weglassen →
@@ -78,10 +81,25 @@ pub struct SmbConfig {
     /// Auf Standard-Ubuntu installiert via `apt install smbclient`.
     #[serde(default = "default_smbclient_bin")]
     pub smbclient_bin: String,
+    /// Maximale Schreibversuche pro Datei. Default 3. Zwischen den
+    /// Versuchen schläft der Sink linear: `attempt * 1s`. Nur
+    /// transiente Fehler profitieren — bei permanenten Auth-/
+    /// Konfig-Fehlern landet die Message nach `retry_attempts`
+    /// Versuchen ohnehin im DLX.
+    #[serde(default = "default_smb_retry_attempts")]
+    pub retry_attempts: u32,
 }
 
 fn default_smbclient_bin() -> String {
     "smbclient".into()
+}
+
+fn default_smb_port() -> u16 {
+    445
+}
+
+fn default_smb_retry_attempts() -> u32 {
+    3
 }
 
 impl Config {
