@@ -1,6 +1,12 @@
-# Sample-Konfig für den WMS Connect Converter.
-# Kopiere nach `config/config.toml` und trage die Credentials ein
-# (alternativ per Env-Variable `WMS_CONNECT__AMQP__URL`).
+## Sample-Konfig für den WMS Connect Converter.
+## Kopiere nach `config/config.toml` und passe Server, Credentials und
+## Queue-Namen an.
+##
+## Geheimnisse besser via Env überschreiben — alles unter `[…]` ist
+## per `WMS_CONNECT__SECTION__KEY` gesetzlich. Beispiele:
+##   WMS_CONNECT__AMQP__URL=amqp://user:pass@host:5672/%2F
+##   WMS_CONNECT__SMB__PASSWORD=...
+##   WMS_CONNECT__SMB__USERNAME=...
 
 [logging]
 dir   = "logs"
@@ -13,23 +19,42 @@ inbound_queue_art    = "wms-connect.inbound.art.dev"
 inbound_queue_order  = "wms-connect.inbound.order.dev"
 prefetch             = 10
 
-# Zielordner. WMS erwartet einen einzigen infiles-Share; alle drei
-# Event-Typen und alle Mandanten schreiben in diesen Ordner (in Prod
-# ein CIFS-Mount, z.B. /mnt/wms-infiles).
-[paths]
-output_dir = "out"
-
-# Einheitliches Dateinamen-Schema für alle Mandanten und alle drei
-# Event-Typen. Platzhalter:
-#   {mandant}              Mandantennummer aus dem Event
-#   {date:FORMAT}          chrono-strftime, z.B. %Y%m%d
-#   {time:FORMAT}          chrono-strftime, z.B. %H%M%S
-#   {seq}, {seq:05}        Pro-Mandant-Counter, optional zero-padded
-#   {count}                Anzahl Rows/Orders im Event (verfügbar,
-#                          wird im Default-Schema nicht genutzt)
-#   {trigger}              nur ART-Events: trigger_artikelnr
-#   {auftragsnr}           nur ORDER-Events: hl40[3] des ersten Auftrags
+## Einheitliches Dateinamen-Schema für alle Mandanten und alle drei
+## Event-Typen. Platzhalter:
+##   {mandant}              Mandantennummer aus dem Event
+##   {date:FORMAT}          chrono-strftime, z.B. %Y%m%d
+##   {time:FORMAT}          chrono-strftime, z.B. %H%M%S
+##   {seq}, {seq:05}        Pro-Mandant-Counter, optional zero-padded
+##   {count}                Anzahl Rows/Orders im Event
+##   {trigger}              nur ART-Events: trigger_artikelnr
+##   {auftragsnr}           nur ORDER-Events: hl40[3] des ersten Auftrags
 [filenames]
 asn   = "{mandant}_asn_{date:%Y%m%d}_{time:%H%M%S}_{seq:05}.dat"
 art   = "{mandant}_art_{date:%Y%m%d}_{time:%H%M%S}_{seq:05}.dat"
 order = "{mandant}_order_{date:%Y%m%d}_{time:%H%M%S}_{seq:05}.dat"
+
+## SMB-Ziel — der Converter schreibt direkt auf den WMS-infiles-Share,
+## ohne Mount auf dem Host. Voraussetzung: das `smbclient`-Binary ist
+## installiert (Ubuntu/Debian: `apt install smbclient`).
+##
+## Atomarität: jede Datei landet zuerst mit `.tmp`-Suffix und wird
+## danach umbenannt. Der WMS-/Lobster-Watcher sieht den Endnamen erst,
+## wenn die Datei vollständig ist.
+##
+## Wenn `[smb]` gesetzt ist, wird `[paths]` ignoriert.
+[smb]
+server   = "192.168.4.153"
+share    = "infiles"
+# subdir innerhalb des Shares; weglassen → Datei landet im Share-Root.
+# subdir = "wms"
+username = "svc-wms-connect"
+password = "CHANGEME"
+# Optionale Windows-Domain bzw. Workgroup:
+# domain = "HARTMANN"
+# Pfad zum smbclient-Binary; default = "smbclient" (PATH-Lookup).
+# smbclient_bin = "/usr/bin/smbclient"
+
+## Lokales Ausgabe-Verzeichnis — nur Dev/Tests, ignoriert sobald
+## `[smb]` konfiguriert ist.
+# [paths]
+# output_dir = "out"

@@ -1,4 +1,3 @@
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::bus::{AckOutcome, HandlerArc};
@@ -12,14 +11,12 @@ pub fn make_handler(
     sink: Arc<dyn OutputSink>,
     seq: Arc<SeqCounter>,
     template: Arc<str>,
-    output_dir: Arc<PathBuf>,
 ) -> HandlerArc {
     Arc::new(move |body: Vec<u8>| {
         let sink = sink.clone();
         let seq = seq.clone();
         let template = template.clone();
-        let output_dir = output_dir.clone();
-        Box::pin(async move { handle(sink.as_ref(), &seq, &template, &output_dir, &body).await })
+        Box::pin(async move { handle(sink.as_ref(), &seq, &template, &body).await })
     })
 }
 
@@ -27,7 +24,6 @@ async fn handle(
     sink: &dyn OutputSink,
     seq: &SeqCounter,
     template: &str,
-    output_dir: &Path,
     body: &[u8],
 ) -> AppResult<AckOutcome> {
     let env: Envelope<WmsAsnReadyData> = serde_json::from_slice(body)
@@ -41,11 +37,11 @@ async fn handle(
         auftragsnr: None,
     };
     let filename = render_filename(template, &ctx)?;
-    let res = sink.write(output_dir, &filename, &content)?;
+    let res = sink.write(&filename, &content).await?;
     tracing::info!(
         event_id = %env.event_id,
         mandant = %env.data.mandant,
-        file = %res.path.display(),
+        file = %res.path,
         rows = env.data.rows.len(),
         bytes = res.bytes,
         "asn geschrieben"

@@ -17,6 +17,8 @@ use config::Config;
 use error::AppResult;
 use handlers::SeqCounter;
 use sink::local_fs::LocalFsSink;
+use sink::smb::{SmbConfig as SinkSmbConfig, SmbSink};
+use sink::OutputSink;
 
 #[derive(Parser, Debug)]
 #[command(version, about = "WMS Connect Converter (HAG-Bus → Lobster-.dat)")]
@@ -24,6 +26,35 @@ struct Cli {
     /// Pfad zur Config-Datei
     #[arg(long, env = "WMS_CONNECT_CONFIG", default_value = "config/config.toml")]
     config: String,
+}
+
+fn build_sink(cfg: &Config) -> AppResult<Arc<dyn OutputSink>> {
+    if let Some(smb) = &cfg.smb {
+        tracing::info!(
+            server = %smb.server,
+            share = %smb.share,
+            subdir = ?smb.subdir,
+            "sink: SMB"
+        );
+        Ok(Arc::new(SmbSink::new(SinkSmbConfig {
+            server: smb.server.clone(),
+            share: smb.share.clone(),
+            subdir: smb.subdir.clone(),
+            username: smb.username.clone(),
+            password: smb.password.clone(),
+            domain: smb.domain.clone(),
+            smbclient_bin: smb.smbclient_bin.clone(),
+        })))
+    } else {
+        // Fallback nur greifbar, weil `Config::load` sonst schon
+        // gemeckert hätte. Nur Dev/Tests.
+        let paths = cfg
+            .paths
+            .as_ref()
+            .expect("paths-Fallback fehlt — Config::load hätte das fangen müssen");
+        tracing::info!(output_dir = %paths.output_dir.display(), "sink: lokales Verzeichnis");
+        Ok(Arc::new(LocalFsSink::new(paths.output_dir.clone())))
+    }
 }
 
 #[tokio::main]
@@ -35,14 +66,10 @@ async fn main() -> AppResult<()> {
         level: cfg.logging.level.clone(),
     })?;
 
-    tracing::info!(
-        output_dir = %cfg.paths.output_dir.display(),
-        "wms-connect-converter startet"
-    );
+    tracing::info!("wms-connect-converter startet");
 
-    let sink: Arc<dyn sink::OutputSink> = Arc::new(LocalFsSink);
+    let sink: Arc<dyn OutputSink> = build_sink(&cfg)?;
     let seq = Arc::new(SeqCounter::new());
-    let output_dir = Arc::new(cfg.paths.output_dir.clone());
 
     // Bus-Verbindung (lapin / RabbitMQ).
     let bus: Arc<dyn Consumer> = Arc::new(AmqpBus::connect_with_retry(&cfg.amqp.url).await?);
@@ -50,10 +77,9 @@ async fn main() -> AppResult<()> {
     let tpl_asn: Arc<str> = Arc::from(cfg.filenames.asn.as_str());
     let tpl_art: Arc<str> = Arc::from(cfg.filenames.art.as_str());
     let tpl_order: Arc<str> = Arc::from(cfg.filenames.order.as_str());
-    let h_asn = handlers::asn::make_handler(sink.clone(), seq.clone(), tpl_asn, output_dir.clone());
-    let h_art = handlers::art::make_handler(sink.clone(), seq.clone(), tpl_art, output_dir.clone());
-    let h_order =
-        handlers::order::make_handler(sink.clone(), seq.clone(), tpl_order, output_dir.clone());
+    let h_asn = handlers::asn::make_handler(sink.clone(), seq.clone(), tpl_asn);
+    let h_art = handlers::art::make_handler(sink.clone(), seq.clone(), tpl_art);
+    let h_order = handlers::order::make_handler(sink.clone(), seq.clone(), tpl_order);
 
     let prefetch = cfg.amqp.prefetch;
     let b_asn = bus.clone();

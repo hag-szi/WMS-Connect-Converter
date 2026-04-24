@@ -1,23 +1,30 @@
-//! Output-Sink — schreibt die gerenderten Strings als UTF-8-Bytes in
-//! eine Datei. Die alte Mandant-abhängige Encoding-Wahl
-//! (ISO-8859-1 für Schenk/ALDI, UTF-8 nur für 510) ist weggefallen:
-//! das WMS nimmt nun überall UTF-8 entgegen. SMB-Share bleibt
-//! Deployment-Sache (cifs-Mount auf dem Host).
+//! Output-Sink — schreibt die gerenderten Strings als UTF-8-Bytes
+//! ans Ziel. Mandant-abhängige Encoding-Wahl ist weggefallen, das
+//! WMS nimmt überall UTF-8 entgegen.
+//!
+//! Zwei Implementierungen:
+//! * [`local_fs::LocalFsSink`] — schreibt in einen lokalen Ordner
+//!   (Dev, Tests).
+//! * [`smb::SmbSink`] — schreibt direkt per `smbclient` auf einen
+//!   SMB-Share. Production-Pfad; das Ziel-System braucht keinen
+//!   Mount, nur einen erreichbaren SMB-Server.
 
 pub mod local_fs;
-
-use std::path::PathBuf;
+pub mod smb;
 
 use crate::error::AppResult;
 
 pub struct WriteResult {
-    pub path: PathBuf,
+    /// Informativer Ziel-Pfad fürs Logging — bei `LocalFsSink` der
+    /// reale Filesystem-Pfad, bei `SmbSink` `smb://server/share/...`.
+    pub path: String,
     pub bytes: usize,
 }
 
+#[async_trait::async_trait]
 pub trait OutputSink: Send + Sync {
-    /// Schreibt `content` UTF-8-kodiert unter `dir/filename`. Erzeugt
-    /// `dir` bei Bedarf.
-    fn write(&self, dir: &std::path::Path, filename: &str, content: &str)
-        -> AppResult<WriteResult>;
+    /// Schreibt `content` UTF-8-kodiert unter `filename`. Der Ziel-
+    /// Ordner ist Implementierungs-Detail des Sinks (lokaler Pfad
+    /// bzw. SMB-Share + Subdir aus der Konfig).
+    async fn write(&self, filename: &str, content: &str) -> AppResult<WriteResult>;
 }

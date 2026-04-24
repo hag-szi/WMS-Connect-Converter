@@ -50,16 +50,17 @@ Mandanten. Der Dateiname folgt ebenfalls einem einheitlichen Muster
                     │  │         order}     │  │
                     │  └────────────────────┘  │
                     │  ┌────────────────────┐  │
-                    │  │ sink::local_fs     │  │
+                    │  │ sink::{smb,        │  │
+                    │  │       local_fs}    │  │
                     │  │  (UTF-8)           │  │
                     │  └────────────────────┘  │
                     └─────────────┬────────────┘
-                                  │
+                                  │ smbclient put + rename
                                   ▼
                     ┌──────────────────────────┐
-                    │ WMS-infiles-Zielordner   │
-                    │ (ein gemeinsamer Share,  │
-                    │  lokal oder CIFS-Mount)  │
+                    │ WMS-infiles-SMB-Share    │
+                    │ (192.168.4.x, ein        │
+                    │  gemeinsamer Ordner)     │
                     └──────────────────────────┘
 ```
 
@@ -78,8 +79,9 @@ Logik in `src/handlers/` kennt nur das Trait.
    Datei-Content mit dem passenden `writer::*::render(...)`,
    bestimmt den Dateinamen aus dem Template und delegiert an den
    Sink.
-3. **Sink** schreibt den gerenderten String UTF-8-kodiert per
-   `std::fs::write`.
+3. **Sink** schreibt den gerenderten String UTF-8-kodiert. In Prod
+   ist das `sink::smb` (shellt `smbclient` aus, siehe unten); für
+   Dev/Tests existiert `sink::local_fs` als Fallback.
 4. **Ack** zurück an den Bus.
 
 Fehler (Parse-Fehler, falsche Feldzahl im Payload, Sink-IO-Fehler)
@@ -87,22 +89,41 @@ werden zu `AckOutcome::RejectToDlx` und die Message landet in der
 Dead-Letter-Queue — **nicht** Requeue, damit defekte Payloads
 nicht endlos rezirkulieren.
 
-## Was passiert **nach** dem `.dat`-Schreiben?
+## SMB-Sink — Produktion
 
-Der Converter ist bei der lokalen Datei fertig. Der Transfer in
-das WMS ist Deployment-Sache:
+Der Converter schreibt **direkt** auf den WMS-infiles-Share, der
+Ziel-Server bleibt unangetastet (keine Mounts, keine zusätzliche
+Software dort). Voraussetzung auf dem Host, der den Converter
+fährt: `smbclient` (Ubuntu/Debian: `apt install smbclient`).
 
-- **CIFS-Mount auf dem Host** (empfohlen, nahtloser Ersatz für
-  Lobster): `output_dir` zeigt auf einen `systemd`-gemounteten
-  SMB-Share, das WMS pollt wie gewohnt.
-- **Watcher + Upload-Agent**: Converter schreibt lokal, ein
-  separater Dienst (`inotify` / Cron) kopiert via `smbclient` /
-  `rsync` / `curl`.
-- **Eigenes Sink-Impl**: ein `SmbSink` / `SftpSink` hinter dem
-  bestehenden `OutputSink`-Trait, Schalter pro Mandant in der
-  Config.
+Ablauf pro Datei:
 
-Siehe auch Punkte unter *Bekannte Grenzen* unten.
+1. Konvertierter Inhalt wird an `smbclient` per stdin (`put -`)
+   übergeben — keine lokale Zwischendatei.
+2. Datei landet auf dem Share zuerst mit `.tmp`-Suffix.
+3. `rename` benennt sie auf den Endnamen — der WMS-Watcher sieht
+   den Endnamen erst, wenn die Datei vollständig ist (Atomarität).
+4. Bei Non-Zero-Exit von `smbclient` (Auth, DNS, Berechtigungen,
+   Disk full) → `AckOutcome::RejectToDlx`, stderr landet im Log.
+
+Credentials gehen via Env (`USER`, `PASSWD`, optional `DOMAIN`)
+an `smbclient`, nicht via argv — `ps -ef` sieht das Passwort
+nicht.
+
+```toml
+[smb]
+server   = "192.168.4.153"
+share    = "infiles"
+# subdir = "wms"          # optional, default = Share-Root
+username = "svc-wms-connect"
+password = "..."           # besser per WMS_CONNECT__SMB__PASSWORD
+# domain         = "HARTMANN"
+# smbclient_bin  = "/usr/bin/smbclient"
+```
+
+Solange `[smb]` in der Config steht, gewinnt der SMB-Sink. Für
+Dev/Tests kann man `[smb]` weglassen und `[paths].output_dir` für
+ein lokales Verzeichnis nutzen (siehe unten).
 
 ## Tech-Stack
 
@@ -138,15 +159,23 @@ besser per Env-Variable — figment nimmt `WMS_CONNECT__`-präfixierte
 Vars mit `__` als Sektions-Separator, z. B.
 `WMS_CONNECT__AMQP__URL=amqp://svc-wms-connect-prod:...@broker/%2F`.
 
-Ein einziger Zielordner für alle Mandanten und alle drei Event-Typen;
-die Dateinamen-Templates sind ebenfalls global. Die Mandantennummer
-aus dem Event fließt in den Dateinamen ein, wird sonst aber nicht
-validiert — das Contract-Schema (JSON Schema auf der Publisher-
-Seite) ist die einzige Schranke.
+Ein einziges Ziel (Share + optionaler Subordner) für alle Mandanten
+und alle drei Event-Typen; die Dateinamen-Templates sind ebenfalls
+global. Die Mandantennummer aus dem Event fließt in den Dateinamen
+ein, wird sonst aber nicht validiert — das Contract-Schema (JSON
+Schema auf der Publisher-Seite) ist die einzige Schranke.
 
 ```toml
-[paths]
-output_dir = "/mnt/wms-infiles"
+# Production: SMB-Ziel (siehe „SMB-Sink — Produktion" oben)
+[smb]
+server   = "192.168.4.153"
+share    = "infiles"
+username = "svc-wms-connect"
+password = "..."
+
+# Dev/Tests: lokales Verzeichnis statt SMB
+# [paths]
+# output_dir = "out"
 
 [filenames]
 asn   = "{mandant}_asn_{date:%Y%m%d}_{time:%H%M%S}_{seq:05}.dat"
@@ -225,8 +254,6 @@ oder Management-UI inspizieren.
 
 Bewusst klein gehalten; offen für Folge-Tickets:
 
-- **Kein Atomic-Rename**: wir schreiben `xxx.dat` direkt. Für
-  CIFS-Ziele evtl. `*.dat.tmp` → `rename(…)`-Pattern nachrüsten.
 - **Seq-Counter in-memory**: beginnt nach Neustart wieder bei 1.
   Bei lückenlosen Nummernkreisen: Counter aus dem Zielordner
   inferieren (einmaliger Scan beim Start) oder persistieren
@@ -242,7 +269,9 @@ Bewusst klein gehalten; offen für Folge-Tickets:
   trotzdem immer als leere Strings mitschicken. Die 2026-04-
   Schenk-Prod-Samples hatten nur 41 Felder, weil Lobster
   trailing-empty-Pipes abschneidet; wir schneiden nichts ab.
-- **Kein SMB-Sink** — siehe *Was passiert nach dem `.dat`-Schreiben?*.
+- **SMB läuft via `smbclient`-Subprozess pro Datei**. Bei sehr
+  hohen Eventraten (>10/s) wäre ein nativer SMB-Client (z. B.
+  `pavao`) effizienter; aktuell vernachlässigbar.
 
 ## Related
 
