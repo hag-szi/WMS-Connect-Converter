@@ -33,7 +33,6 @@ clap = { version = "4", features = ["derive", "env"] }
 
 # Utils
 chrono = { version = "0.4", features = ["serde"] }
-encoding_rs = "0.8"       # Latin-1 / UTF-8 Umschaltung je Mandant
 thiserror = "1"
 anyhow = "1"
 uuid = { version = "1", features = ["v4"] }

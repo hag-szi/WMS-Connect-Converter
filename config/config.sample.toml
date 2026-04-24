@@ -14,7 +14,8 @@ inbound_queue_order  = "wms-connect.inbound.order.dev"
 prefetch             = 10
 
 # Ein Eintrag pro Mandant. Unbekannte Mandanten in Events werden
-# rejected (landen im DLX).
+# rejected (landen im DLX). Alle .dat-Dateien werden UTF-8 geschrieben,
+# unabhängig vom Mandant.
 #
 # Dateinamen-Platzhalter:
 #   {mandant}              Mandantennummer
@@ -27,7 +28,6 @@ prefetch             = 10
 
 [[mandant]]
 key               = "520"
-encoding          = "iso-8859-1"
 asn_file_name     = "{mandant}_asn_{date:%Y%m%d}_{time:%H%M%S}_{seq:05}.dat"
 art_file_name     = "{mandant}_art_{date:%Y%m%d}_{time:%H%M%S}_{seq:05}_{trigger}.dat"
 order_file_name   = "{mandant}_order_{date:%Y%m%d}_{time:%H%M%S}_{seq:05}.dat"
@@ -35,7 +35,6 @@ output_dir        = "out/520"
 
 [[mandant]]
 key               = "510"
-encoding          = "utf-8"
 asn_file_name     = "{mandant}_asn_{date:%Y%m%d}_{time:%H%M%S}_{seq:05}.dat"
 art_file_name     = "{mandant}_art_{date:%Y%m%d}_{time:%H%M%S}_{seq:05}_{trigger}.dat"
 order_file_name   = "{mandant}_order_{date:%Y%m%d}_{time:%H%M%S}_{count}_auftraege.dat"
@@ -45,7 +44,6 @@ output_dir        = "out/510"
 # (Kopiere den Block für 875/877/885/886/889 analog, sobald gebraucht.)
 [[mandant]]
 key               = "871"
-encoding          = "iso-8859-1"
 asn_file_name     = "{mandant}_asn_{date:%Y%m%d}_{time:%H%M%S}_{seq:05}.dat"
 art_file_name     = "{mandant}_art_{date:%Y%m%d}_{time:%H%M%S}_{seq:05}_{trigger}.dat"
 order_file_name   = "{mandant}_order_{date:%d.%m.%Y}_{auftragsnr}.dat"

@@ -47,7 +47,7 @@ async fn handle(
         auftragsnr,
     };
     let filename = render_filename(&m.order_file_name, &ctx)?;
-    let res = sink.write(&m.output_dir, &filename, &content, &m.encoding)?;
+    let res = sink.write(&m.output_dir, &filename, &content)?;
     tracing::info!(
         event_id = %env.event_id,
         mandant = %m.key,
