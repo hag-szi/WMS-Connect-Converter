@@ -1,4 +1,4 @@
-//! Writer für `hag.events.internal.lager.asn.ready` → 25 pipe-delimited Felder je Palette.
+//! Writer für `hag.events.internal.asn.ready` → 25 pipe-delimited Felder je Palette.
 //!
 //! Felder 1, 2, 8, 11, 12, 16, 19, 20, 22, 23, 24 sind Fixwerte bzw.
 //! leer/timestamp und werden von uns erzeugt. Die Event-Payload

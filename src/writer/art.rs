@@ -1,4 +1,4 @@
-//! Writer für `hag.events.internal.lager.article.ready` → 47 pipe-delimited Felder je Artikel.
+//! Writer für `hag.events.internal.article.ready` → 47 pipe-delimited Felder je Artikel.
 //!
 //! Die Row kommt vom Publisher bereits als 47-Elemente-String-Array
 //! (Lobster-Profil-Konvention: Felder 42-47 sind ALDI-spezifisch und
@@ -16,7 +16,7 @@ pub fn render(data: &InternalLagerArticleReadyData) -> AppResult<String> {
     for (idx, row) in data.rows.iter().enumerate() {
         if row.len() != EXPECTED_FIELDS {
             return Err(AppError::BadPayload(format!(
-                "hag.events.internal.lager.article.ready rows[{idx}]: {} Felder (erwartet {EXPECTED_FIELDS})",
+                "hag.events.internal.article.ready rows[{idx}]: {} Felder (erwartet {EXPECTED_FIELDS})",
                 row.len()
             )));
         }

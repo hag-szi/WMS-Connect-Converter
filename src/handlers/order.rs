@@ -28,7 +28,7 @@ async fn handle(
 ) -> AppResult<AckOutcome> {
     let env: Envelope<InternalLagerOrderReadyData> = serde_json::from_slice(body).map_err(|e| {
         crate::error::AppError::BadPayload(format!(
-            "hag.events.internal.lager.order.ready parse: {e}"
+            "hag.events.internal.order.ready parse: {e}"
         ))
     })?;
     let content = order::render(&env.data)?;

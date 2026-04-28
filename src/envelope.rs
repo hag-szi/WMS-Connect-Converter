@@ -3,9 +3,9 @@
 //! (v2-Taxonomy, contracts v1.0.1).
 //!
 //! Subjects:
-//!   - `hag.events.internal.lager.asn.ready`     → InternalLagerAsnReadyData
-//!   - `hag.events.internal.lager.article.ready` → InternalLagerArticleReadyData
-//!   - `hag.events.internal.lager.order.ready`   → InternalLagerOrderReadyData
+//!   - `hag.events.internal.asn.ready`     → InternalLagerAsnReadyData
+//!   - `hag.events.internal.article.ready` → InternalLagerArticleReadyData
+//!   - `hag.events.internal.order.ready`   → InternalLagerOrderReadyData
 //!
 //! Alle `.dat`-Row-Werte sind als Vec<String> (positional) abgelegt;
 //! die Schemas geben feste Längen vor, wir validieren das beim
@@ -33,7 +33,7 @@ pub struct Envelope<T> {
     pub raw_payload: Option<serde_json::Value>,
 }
 
-// --- hag.events.internal.lager.asn.ready ----------------------------------
+// --- hag.events.internal.asn.ready ----------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InternalLagerAsnReadyData {
@@ -58,7 +58,7 @@ pub struct InternalLagerAsnRow {
     pub paletten_typ: String,
 }
 
-// --- hag.events.internal.lager.article.ready ------------------------------
+// --- hag.events.internal.article.ready ------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InternalLagerArticleReadyData {
@@ -70,7 +70,7 @@ pub struct InternalLagerArticleReadyData {
     pub rows: Vec<Vec<String>>,
 }
 
-// --- hag.events.internal.lager.order.ready --------------------------------
+// --- hag.events.internal.order.ready --------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InternalLagerOrderReadyData {
@@ -99,7 +99,7 @@ mod tests {
     #[test]
     fn asn_round_trip() {
         let json = serde_json::json!({
-            "event_id": "1", "event_name": "hag.events.internal.lager.asn.ready",
+            "event_id": "1", "event_name": "hag.events.internal.asn.ready",
             "event_version": "1.0.1",
             "occurred_at": "2026-04-24T10:00:00Z",
             "producer": "schenk-we", "customer_key": "SCHENK",
@@ -128,7 +128,7 @@ mod tests {
         row[1] = "1".into();
         row[2] = "07418".into();
         let json = serde_json::json!({
-            "event_id": "1", "event_name": "hag.events.internal.lager.article.ready",
+            "event_id": "1", "event_name": "hag.events.internal.article.ready",
             "event_version": "1.0.1",
             "occurred_at": "2026-04-24T10:00:00Z",
             "producer": "schenk-pull", "customer_key": "SCHENK",
@@ -148,7 +148,7 @@ mod tests {
         let hl41: Vec<String> = (0..15).map(|i| format!("{i}")).collect();
         let hl42: Vec<String> = (0..24).map(|i| format!("{i}")).collect();
         let json = serde_json::json!({
-            "event_id": "1", "event_name": "hag.events.internal.lager.order.ready",
+            "event_id": "1", "event_name": "hag.events.internal.order.ready",
             "event_version": "1.0.1",
             "occurred_at": "2026-04-24T10:00:00Z",
             "producer": "order-publisher", "customer_key": "SCHENK",

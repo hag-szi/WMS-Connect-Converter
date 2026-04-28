@@ -28,7 +28,7 @@ async fn handle(
 ) -> AppResult<AckOutcome> {
     let env: Envelope<InternalLagerAsnReadyData> = serde_json::from_slice(body).map_err(|e| {
         crate::error::AppError::BadPayload(format!(
-            "hag.events.internal.lager.asn.ready parse: {e}"
+            "hag.events.internal.asn.ready parse: {e}"
         ))
     })?;
     let content = asn::render(&env.data);

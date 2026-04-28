@@ -1,4 +1,4 @@
-//! Writer für `hag.events.internal.lager.order.ready` → HL40/HL41/HL42(×N)/HL43-Satzblöcke
+//! Writer für `hag.events.internal.order.ready` → HL40/HL41/HL42(×N)/HL43-Satzblöcke
 //! pro Auftrag; mehrere Aufträge in einer Datei sind OK (entspricht
 //! z.B. `510_..._23_auftraege.dat`).
 
@@ -14,7 +14,7 @@ pub const HL43_FIELDS: usize = 3;
 pub fn render(data: &InternalLagerOrderReadyData) -> AppResult<String> {
     if data.orders.is_empty() {
         return Err(AppError::BadPayload(
-            "hag.events.internal.lager.order.ready: orders[] leer".into(),
+            "hag.events.internal.order.ready: orders[] leer".into(),
         ));
     }
     let mut lines: Vec<String> = Vec::new();

@@ -29,7 +29,7 @@ async fn handle(
     let env: Envelope<InternalLagerArticleReadyData> =
         serde_json::from_slice(body).map_err(|e| {
             crate::error::AppError::BadPayload(format!(
-                "hag.events.internal.lager.article.ready parse: {e}"
+                "hag.events.internal.article.ready parse: {e}"
             ))
         })?;
     let content = art::render(&env.data)?;
